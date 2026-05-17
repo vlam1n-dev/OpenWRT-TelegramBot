@@ -61,6 +61,10 @@ Requires `root` privileges and OpenWRT v24+ (with `apk` support).
    chmod +x install.sh
    ./install.sh
    ```
+5. Remove the temporary installation files from `/tmp` to free up the router's RAM:
+   ```bash
+   rm -rf /tmp/bot.tar.gz /tmp/OpenWRT-TelegramBot-main
+   ```
 
 Once installed, go to **Services ➡️ Telegram Bot** in the LuCI web interface, enter your bot API token (from `@BotFather`), add your Telegram User ID to the admin list, and enable the service.
 
