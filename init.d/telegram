@@ -1,0 +1,60 @@
+#!/bin/sh /etc/rc.common
+# OpenWRT Telegram Bot — Procd init script
+# Copyright (c) 2024-2026 vlam1n-dev
+
+USE_PROCD=1
+START=99
+STOP=10
+
+PROG="/usr/bin/telegram-bot.sh"
+PIDFILE="/tmp/telegram-bot/bot.pid"
+CONF="telegram"
+
+start_service() {
+	local enabled
+	config_load "$CONF"
+	config_get enabled bot enabled '0'
+
+	[ "$enabled" = "1" ] || {
+		echo "Telegram bot is disabled in config"
+		return 0
+	}
+
+	mkdir -p /tmp/telegram-bot
+
+	procd_open_instance "telegram-bot"
+	procd_set_param command "$PROG"
+	procd_set_param respawn 3600 5 5
+	procd_set_param stdout 1
+	procd_set_param stderr 1
+	procd_set_param pidfile "$PIDFILE"
+	procd_close_instance
+	
+	procd_open_instance "telegram-monitor"
+	procd_set_param command "/usr/bin/telegram-monitor.sh"
+	procd_set_param respawn 3600 5 5
+	procd_set_param stdout 1
+	procd_set_param stderr 1
+	procd_set_param pidfile "/tmp/telegram-bot/monitor.pid"
+	procd_close_instance
+}
+
+stop_service() {
+	[ -f "$PIDFILE" ] && {
+		kill "$(cat "$PIDFILE")" 2>/dev/null
+		rm -f "$PIDFILE"
+	}
+	[ -f "/tmp/telegram-bot/monitor.pid" ] && {
+		kill "$(cat "/tmp/telegram-bot/monitor.pid")" 2>/dev/null
+		rm -f "/tmp/telegram-bot/monitor.pid"
+	}
+}
+
+service_triggers() {
+	procd_add_reload_trigger "$CONF"
+}
+
+reload_service() {
+	stop
+	start
+}

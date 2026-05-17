@@ -1,0 +1,192 @@
+<script type="text/javascript">//<![CDATA[
+    XHR.poll(5, '<%=luci.dispatcher.build_url("admin", "services", "telegram", "status")%>', null,
+        function(x, data) {
+            var tb = document.getElementById('telegram_status');
+            if (data && tb) {
+                if (data.running) {
+                    tb.innerHTML = '<em><%:Running%> (PID: ' + data.pid + ')</em>';
+                    tb.className = 'label success';
+                } else {
+                    tb.innerHTML = '<em><%:Not running%></em>';
+                    tb.className = 'label';
+                }
+            }
+        }
+    );
+
+    function test_api() {
+        var btn = document.getElementById('test_api_btn');
+        var res = document.getElementById('test_api_res');
+        btn.disabled = true;
+        res.innerHTML = '<em><%:Testing...%></em>';
+        
+        XHR.get('<%=luci.dispatcher.build_url("admin", "services", "telegram", "test_api")%>', null,
+            function(x, data) {
+                btn.disabled = false;
+                if (data && data.ok) {
+                    res.innerHTML = '<span style="color:green"><%:Success! Bot name:%> @' + data.result.username + '</span>';
+                } else {
+                    var err = data ? (data.description || data.error) : '<%:Unknown error%>';
+                    res.innerHTML = '<span style="color:red"><%:Error:%> ' + err + '</span>';
+                }
+            }
+        );
+    }
+
+    function check_updates() {
+        var btn = document.getElementById('check_upd_btn');
+        var res = document.getElementById('check_upd_res');
+        btn.disabled = true;
+        res.innerHTML = '<em><%:Checking for updates...%></em>';
+        
+        XHR.get('<%=luci.dispatcher.build_url("admin", "services", "telegram", "check_update")%>', null,
+            function(x, data) {
+                btn.disabled = false;
+                if (data && data.github) {
+                    var local = data.local_version;
+                    var latest = data.github.tag_name ? data.github.tag_name.replace(/^v/, '') : null;
+                    if (latest) {
+                        if (local !== latest) {
+                            res.innerHTML = '<span style="color:green; font-weight:bold;"><%:New version available:%> v' + latest + ' (Current: v' + local + ') - <a href="https://github.com/vlam1n-dev/OpenWRT-TelegramBot" target="_blank" style="text-decoration: underline;"><%:Download on GitHub%></a></span>';
+                        } else {
+                            res.innerHTML = '<span style="color:gray"><%:You are running the latest version:%> v' + local + '</span>';
+                        }
+                    } else {
+                        res.innerHTML = '<span style="color:red"><%:Failed to parse update version%></span>';
+                    }
+                } else {
+                    res.innerHTML = '<span style="color:red"><%:Failed to check updates (connection error)%></span>';
+                }
+            }
+        );
+    }
+    var current_log_type = '';
+
+    function view_log(type) {
+        current_log_type = type;
+        var modal = document.getElementById('log_modal');
+        var title = document.getElementById('log_modal_title');
+        var content = document.getElementById('log_modal_content');
+        
+        modal.style.display = 'flex';
+        title.innerHTML = type === 'bot' ? '<%:Bot Activity Log%>' : '<%:Unauthorized Access Log%>';
+        content.innerHTML = '<em><%:Loading...%></em>';
+        
+        fetch_log_content(type);
+    }
+
+    function close_log_modal() {
+        document.getElementById('log_modal').style.display = 'none';
+    }
+
+    function fetch_log_content(type) {
+        var content = document.getElementById('log_modal_content');
+        XHR.get('<%=luci.dispatcher.build_url("admin", "services", "telegram", "read_log")%>/' + type, null,
+            function(x, data) {
+                if (data && data.content !== undefined) {
+                    content.innerHTML = data.content !== '' ? escape_html(data.content) : '<em><%:Log file is empty%></em>';
+                } else {
+                    content.innerHTML = '<span style="color:#d9534f"><%:Failed to read log file or file does not exist%></span>';
+                }
+            }
+        );
+    }
+
+    function refresh_current_log() {
+        if (current_log_type) {
+            fetch_log_content(current_log_type);
+        }
+    }
+
+    function clear_current_log() {
+        if (current_log_type && confirm('<%:Are you sure you want to clear this log?%>')) {
+            var content = document.getElementById('log_modal_content');
+            content.innerHTML = '<em><%:Clearing...%></em>';
+            XHR.get('<%=luci.dispatcher.build_url("admin", "services", "telegram", "clear_log")%>/' + current_log_type, null,
+                function(x, data) {
+                    if (data && data.success) {
+                        fetch_log_content(current_log_type);
+                    } else {
+                        content.innerHTML = '<span style="color:#d9534f"><%:Failed to clear log file%></span>';
+                    }
+                }
+            );
+        }
+    }
+
+    function escape_html(text) {
+        var map = {
+            '&': '&amp;',
+            '<': '&lt;',
+            '>': '&gt;',
+            '"': '&quot;',
+            "'": '&#039;'
+        };
+        return text.replace(/[&<>"']/g, function(m) { return map[m]; });
+    }
+//]]></script>
+
+<fieldset class="cbi-section">
+    <legend><%:Service Status%></legend>
+    <div class="cbi-section-node">
+        <div class="cbi-value">
+            <label class="cbi-value-title"><%:Status%></label>
+            <div class="cbi-value-field">
+                <span id="telegram_status"><em><%:Collecting data...%></em></span>
+            </div>
+        </div>
+        <div class="cbi-value">
+            <label class="cbi-value-title"><%:Test Connection%></label>
+            <div class="cbi-value-field">
+                <input type="button" class="btn cbi-button cbi-button-apply" id="test_api_btn" value="<%:Test API%>" onclick="test_api()" />
+                <span id="test_api_res" style="margin-left: 10px;"></span>
+            </div>
+        </div>
+        <div class="cbi-value">
+            <label class="cbi-value-title"><%:Updates%></label>
+            <div class="cbi-value-field">
+                <input type="button" class="btn cbi-button cbi-button-apply" id="check_upd_btn" value="<%:Check Updates%>" onclick="check_updates()" />
+                <span id="check_upd_res" style="margin-left: 10px;"></span>
+            </div>
+        </div>
+    </div>
+</fieldset>
+
+<fieldset class="cbi-section" style="margin-top: 20px;">
+    <legend><%:Log Management%></legend>
+    <div class="cbi-section-node">
+        <div class="cbi-value">
+            <label class="cbi-value-title"><%:Bot Activity Log%></label>
+            <div class="cbi-value-field">
+                <input type="button" class="btn cbi-button cbi-button-apply" value="<%:View Bot Log%>" onclick="view_log('bot')" />
+            </div>
+        </div>
+        <div class="cbi-value">
+            <label class="cbi-value-title"><%:Unauthorized Access Log%></label>
+            <div class="cbi-value-field">
+                <input type="button" class="btn cbi-button cbi-button-apply" value="<%:View Auth Log%>" onclick="view_log('auth')" />
+            </div>
+        </div>
+    </div>
+</fieldset>
+
+<!-- Log Modal Popup -->
+<div id="log_modal" style="display: none; position: fixed; z-index: 10000; left: 0; top: 0; width: 100%; height: 100%; background: rgba(0, 0, 0, 0.7); backdrop-filter: blur(4px); align-items: center; justify-content: center; box-sizing: border-box;">
+    <div style="background: #1e1e1e; color: #ffffff; width: 85%; max-width: 900px; height: 80%; border-radius: 8px; box-shadow: 0 10px 30px rgba(0,0,0,0.5); display: flex; flex-direction: column; overflow: hidden; border: 1px solid #3c3c3c; box-sizing: border-box;">
+        <!-- Modal Header -->
+        <div style="padding: 15px 20px; border-bottom: 1px solid #3c3c3c; display: flex; justify-content: space-between; align-items: center; background: #252526; box-sizing: border-box;">
+            <h3 id="log_modal_title" style="margin: 0; font-size: 1.2em; color: #ffffff; font-weight: 500; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;">Log Viewer</h3>
+            <span style="cursor: pointer; font-size: 1.5em; font-weight: bold; opacity: 0.7; color: #ffffff; line-height: 1;" onclick="close_log_modal()">&times;</span>
+        </div>
+        <!-- Modal Body (Log Content) -->
+        <div style="flex: 1; padding: 20px; overflow: auto; background: #1e1e1e; box-sizing: border-box;">
+            <pre id="log_modal_content" style="margin: 0; padding: 0 !important; background: transparent !important; border: none !important; box-shadow: none !important; color: #d4d4d4 !important; font-family: Consolas, Menlo, Monaco, 'Courier New', monospace; font-size: 12px; line-height: 1.6; white-space: pre-wrap; word-break: break-all; box-sizing: border-box;">Loading log data...</pre>
+        </div>
+        <!-- Modal Footer -->
+        <div style="padding: 15px 20px; border-top: 1px solid #3c3c3c; display: flex; justify-content: flex-end; gap: 10px; background: #252526; box-sizing: border-box;">
+            <input type="button" class="btn cbi-button" style="background: #3e3e42; color: #ffffff; border: 1px solid #555; padding: 6px 12px; border-radius: 4px; cursor: pointer;" value="<%:Refresh%>" onclick="refresh_current_log()" />
+            <input type="button" class="btn cbi-button cbi-button-reset" style="background: #d9534f; color: white; border: 1px solid #d9534f; padding: 6px 12px; border-radius: 4px; cursor: pointer;" value="<%:Clear Log%>" onclick="clear_current_log()" />
+            <input type="button" class="btn cbi-button" style="background: #007acc; color: #ffffff; border: 1px solid #007acc; padding: 6px 12px; border-radius: 4px; cursor: pointer;" value="<%:Close%>" onclick="close_log_modal()" />
+        </div>
+    </div>
+</div>
