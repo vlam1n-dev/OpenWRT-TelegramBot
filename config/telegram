@@ -12,6 +12,8 @@ config telegram 'bot'
 	option rate_limit_window '3'
 	option log_bot_max_lines '1000'
 	option log_bot_reset_time '86400'
+	option log_error_max_lines '1000'
+	option log_error_reset_time '21600'
 	option log_auth_max_lines '1000'
 	option log_auth_reset_time '86400'
 

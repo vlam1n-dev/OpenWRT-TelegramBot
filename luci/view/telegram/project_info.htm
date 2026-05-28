@@ -2,7 +2,7 @@
 local sys = require "luci.sys"
 local ver = sys.exec("cat /usr/lib/telegram-bot/VERSION 2>/dev/null")
 if not ver or ver == "" then ver = sys.exec("cat ./VERSION 2>/dev/null") end
-if not ver or ver == "" then ver = "1.0.0" end
+if not ver or ver == "" then ver = "1.0.24" end
 ver = string.gsub(ver, "%s+", "")
 %>
 

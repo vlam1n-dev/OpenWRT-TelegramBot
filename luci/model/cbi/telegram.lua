@@ -41,6 +41,14 @@ l_bot_reset = s:option(Value, "log_bot_reset_time", translate("Bot Log Reset Int
 l_bot_reset.datatype = "uinteger"
 l_bot_reset.default = "86400"
 
+l_error_max = s:option(Value, "log_error_max_lines", translate("Error Log Max Lines"), translate("Maximum lines in error log file before auto-clearing"))
+l_error_max.datatype = "uinteger"
+l_error_max.default = "1000"
+
+l_error_reset = s:option(Value, "log_error_reset_time", translate("Error Log Reset Interval (s)"), translate("Time in seconds before clearing error log (0 to disable)"))
+l_error_reset.datatype = "uinteger"
+l_error_reset.default = "86400"
+
 l_auth_max = s:option(Value, "log_auth_max_lines", translate("Auth Log Max Lines"), translate("Maximum lines in unauthorized attempts log file before auto-clearing"))
 l_auth_max.datatype = "uinteger"
 l_auth_max.default = "1000"

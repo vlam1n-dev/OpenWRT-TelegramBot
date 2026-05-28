@@ -14,6 +14,19 @@ fi
 
 load_config
 
+# Redirect stderr to error log
+ERROR_FIFO="${BOT_DIR}/stderr_bot_$$"
+if mkfifo "$ERROR_FIFO" 2>/dev/null; then
+    (
+        while read -r line; do
+            log_err "sh: $line"
+        done < "$ERROR_FIFO"
+    ) &
+    ERROR_LOGGER_PID=$!
+    exec 2> "$ERROR_FIFO"
+    trap 'exec 2>&-; [ -n "$ERROR_LOGGER_PID" ] && kill "$ERROR_LOGGER_PID" 2>/dev/null; rm -f "$ERROR_FIFO"' EXIT INT TERM
+fi
+
 if [ -z "$API_TOKEN" ]; then
     log_error "Bot token not configured! Exiting."
     exit 1
@@ -28,27 +41,28 @@ get_main_keyboard() {
 
 get_ifaces_keyboard() {
     local tmp_file="${BOT_DIR}/ifaces_raw.txt"
-    ubus call network.interface dump 2>/dev/null | jsonfilter -e '@.interface[*].interface' -e '@.interface[*].up' 2>/dev/null > "$tmp_file"
+    ubus call network.interface dump 2>/dev/null | jsonfilter -e '@.interface[*].interface' 2>/dev/null > "$tmp_file"
     
     local kb="["
     local first=1
     
     if [ -f "$tmp_file" ]; then
         while read -r iface; do
-            if ! read -r status; then
-                status="false"
-            fi
             [ -z "$iface" ] && continue
             [ "$iface" = "loopback" ] && continue
             
+            # Get up status locally
+            local status_json=$(ubus call network.interface."$iface" status 2>/dev/null)
+            local up=$(echo "$status_json" | jsonfilter -e '@.up' 2>/dev/null)
+            
             local btn_text="$iface"
-            local action="if_down_${iface}"
-            if [ "$status" = "true" ]; then
+            if [ "$up" = "true" ]; then
                 btn_text="${btn_text} ${MSG_IFACE_ON}"
             else
                 btn_text="${btn_text} ${MSG_IFACE_OFF}"
-                action="if_up_${iface}"
             fi
+            
+            local action="if_view_${iface}"
             
             if [ "$first" -eq 1 ]; then
                 kb="${kb}[{\"text\":\"${btn_text}\",\"callback_data\":\"${action}\"}]"
@@ -66,6 +80,103 @@ get_ifaces_keyboard() {
         kb="${kb},[{\"text\":\"${BTN_BACK}\",\"callback_data\":\"btn_main\"}]]"
     fi
     echo "$kb"
+}
+
+get_iface_details_keyboard() {
+    local iface="$1"
+    local status_json=$(ubus call network.interface."$iface" status 2>/dev/null)
+    local up=$(echo "$status_json" | jsonfilter -e '@.up' 2>/dev/null)
+    
+    local btn_toggle=""
+    if [ "$up" = "true" ]; then
+        btn_toggle="{\"text\":\"${BTN_IFACE_DOWN}\",\"callback_data\":\"if_action_down_${iface}\"}"
+    else
+        btn_toggle="{\"text\":\"${BTN_IFACE_UP}\",\"callback_data\":\"if_action_up_${iface}\"}"
+    fi
+    
+    echo "[[${btn_toggle}], [{\"text\":\"${BTN_IFACE_RESTART}\",\"callback_data\":\"if_action_restart_${iface}\"}], [{\"text\":\"${BTN_BACK}\",\"callback_data\":\"btn_ifaces\"}]]"
+}
+
+get_devices_keyboard() {
+    local leases="/tmp/dhcp.leases"
+    local kb="["
+    local first=1
+    
+    if [ -f "$leases" ]; then
+        local sorted_leases="${BOT_DIR}/sorted_leases"
+        sort -rn "$leases" > "$sorted_leases" 2>/dev/null
+        while read -r lease_time mac ip name client_id; do
+            [ -z "$mac" ] && continue
+            [ "$name" = "*" ] && name="Unknown"
+            
+            local display_name="$name"
+            if [ ${#display_name} -gt 20 ]; then
+                display_name="$(echo "$display_name" | cut -c 1-17)..."
+            fi
+            
+            if [ "$first" -eq 1 ]; then
+                kb="${kb}[{\"text\":\"${display_name}\",\"callback_data\":\"dev_view_${mac}\"}]"
+                first=0
+            else
+                kb="${kb},[{\"text\":\"${display_name}\",\"callback_data\":\"dev_view_${mac}\"}]"
+            fi
+        done < "$sorted_leases"
+        rm -f "$sorted_leases"
+    fi
+    
+    if [ "$first" -eq 1 ]; then
+        kb="[[{\"text\":\"${BTN_BLOCKED_DEVICES}\",\"callback_data\":\"dev_blocked_list\"}], [{\"text\":\"${BTN_REFRESH}\",\"callback_data\":\"btn_devices_refresh\"}], [{\"text\":\"${BTN_BACK}\",\"callback_data\":\"btn_main\"}]]"
+    else
+        kb="${kb},[{\"text\":\"${BTN_BLOCKED_DEVICES}\",\"callback_data\":\"dev_blocked_list\"}], [{\"text\":\"${BTN_REFRESH}\",\"callback_data\":\"btn_devices_refresh\"}], [{\"text\":\"${BTN_BACK}\",\"callback_data\":\"btn_main\"}]]"
+    fi
+    echo "$kb"
+}
+
+get_blocked_devices_keyboard() {
+    local kb="["
+    local first=1
+    
+    local list=$(get_blocked_devices)
+    local old_ifs="$IFS"
+    IFS=$'\n'
+    for line in $list; do
+        IFS="$old_ifs"
+        [ -z "$line" ] && continue
+        local mac="${line%%|*}"
+        local name="${line##*|}"
+        [ -z "$mac" ] && continue
+        
+        local display_name="$name"
+        if [ ${#display_name} -gt 20 ]; then
+            display_name="$(echo "$display_name" | cut -c 1-17)..."
+        fi
+        
+        if [ "$first" -eq 1 ]; then
+            kb="${kb}[{\"text\":\"${display_name}\",\"callback_data\":\"dev_blocked_view_${mac}\"}]"
+            first=0
+        else
+            kb="${kb},[{\"text\":\"${display_name}\",\"callback_data\":\"dev_blocked_view_${mac}\"}]"
+        fi
+        IFS=$'\n'
+    done
+    IFS="$old_ifs"
+    
+    if [ "$first" -eq 1 ]; then
+        kb="[[{\"text\":\"${BTN_BACK}\",\"callback_data\":\"btn_devices\"}]]"
+    else
+        kb="${kb},[{\"text\":\"${BTN_BACK}\",\"callback_data\":\"btn_devices\"}]]"
+    fi
+    echo "$kb"
+}
+
+get_device_details_keyboard() {
+    local mac="$1"
+    echo "[[{\"text\":\"${BTN_REFRESH}\",\"callback_data\":\"dev_refresh_${mac}\"}], [{\"text\":\"${BTN_KICK}\",\"callback_data\":\"dev_action_kick_${mac}\"},{\"text\":\"${BTN_BLOCK}\",\"callback_data\":\"dev_action_block_${mac}\"}], [{\"text\":\"${BTN_BACK}\",\"callback_data\":\"btn_devices\"}]]"
+}
+
+get_blocked_device_details_keyboard() {
+    local mac="$1"
+    echo "[[{\"text\":\"${BTN_UNBLOCK}\",\"callback_data\":\"dev_action_unblock_${mac}\"}], [{\"text\":\"${BTN_BACK}\",\"callback_data\":\"dev_blocked_list\"}]]"
 }
 
 get_settings_keyboard() {
@@ -149,11 +260,23 @@ process_callback() {
     fi
     
     case "$data" in
-        btn_main|btn_refresh)
+        btn_main)
             local info=$(get_system_info)
             local kb=$(get_main_keyboard)
-            tg_edit_message_text "$chat_id" "$msg_id" "$info" "$kb"
+            tg_edit_message_text "$chat_id" "$msg_id" "$info" "$kb" >/dev/null
             tg_answer_callback "$cb_id" "" "false"
+            ;;
+        btn_refresh)
+            local info=$(get_system_info)
+            local kb=$(get_main_keyboard)
+            local resp=$(tg_edit_message_text "$chat_id" "$msg_id" "$info" "$kb")
+            local ok=$(echo "$resp" | jsonfilter -e '@.ok' 2>/dev/null)
+            local desc=$(echo "$resp" | jsonfilter -e '@.description' 2>/dev/null)
+            if [ "$ok" = "true" ] || echo "$desc" | grep -qi "not modified"; then
+                tg_answer_callback "$cb_id" "$MSG_REFRESH_SUCCESS" "false"
+            else
+                tg_answer_callback "$cb_id" "$MSG_REFRESH_ERROR" "false"
+            fi
             ;;
         btn_reboot)
             local kb="[[{\"text\":\"${BTN_YES}\",\"callback_data\":\"do_reboot\"},{\"text\":\"${BTN_NO}\",\"callback_data\":\"btn_main\"}]]"
@@ -169,50 +292,190 @@ process_callback() {
             ;;
         btn_stats)
             local stats=$(get_system_stats)
-            local kb="[[{\"text\":\"${BTN_REFRESH}\",\"callback_data\":\"btn_stats\"}], [{\"text\":\"${BTN_BACK}\",\"callback_data\":\"btn_main\"}]]"
+            local kb="[[{\"text\":\"${BTN_REFRESH}\",\"callback_data\":\"btn_stats_refresh\"}], [{\"text\":\"${BTN_BACK}\",\"callback_data\":\"btn_main\"}]]"
             tg_edit_message_text "$chat_id" "$msg_id" "$stats" "$kb"
             tg_answer_callback "$cb_id" "" "false"
             ;;
+        btn_stats_refresh)
+            local stats=$(get_system_stats)
+            local kb="[[{\"text\":\"${BTN_REFRESH}\",\"callback_data\":\"btn_stats_refresh\"}], [{\"text\":\"${BTN_BACK}\",\"callback_data\":\"btn_main\"}]]"
+            local resp=$(tg_edit_message_text "$chat_id" "$msg_id" "$stats" "$kb")
+            local ok=$(echo "$resp" | jsonfilter -e '@.ok' 2>/dev/null)
+            local desc=$(echo "$resp" | jsonfilter -e '@.description' 2>/dev/null)
+            if [ "$ok" = "true" ] || echo "$desc" | grep -qi "not modified"; then
+                tg_answer_callback "$cb_id" "$MSG_REFRESH_SUCCESS" "false"
+            else
+                tg_answer_callback "$cb_id" "$MSG_REFRESH_ERROR" "false"
+            fi
+            ;;
         btn_devices)
-            local devs=$(get_connected_devices)
-            local kb="[[{\"text\":\"${BTN_REFRESH}\",\"callback_data\":\"btn_devices\"}], [{\"text\":\"${BTN_BACK}\",\"callback_data\":\"btn_main\"}]]"
-            tg_edit_message_text "$chat_id" "$msg_id" "$devs" "$kb"
+            local kb=$(get_devices_keyboard)
+            tg_edit_message_text "$chat_id" "$msg_id" "$MSG_DEVICES_HEADER" "$kb"
             tg_answer_callback "$cb_id" "" "false"
+            ;;
+        btn_devices_refresh)
+            local kb=$(get_devices_keyboard)
+            local resp=$(tg_edit_message_text "$chat_id" "$msg_id" "$MSG_DEVICES_HEADER" "$kb")
+            local ok=$(echo "$resp" | jsonfilter -e '@.ok' 2>/dev/null)
+            local desc=$(echo "$resp" | jsonfilter -e '@.description' 2>/dev/null)
+            if [ "$ok" = "true" ] || echo "$desc" | grep -qi "not modified"; then
+                tg_answer_callback "$cb_id" "$MSG_REFRESH_SUCCESS" "false"
+            else
+                tg_answer_callback "$cb_id" "$MSG_REFRESH_ERROR" "false"
+            fi
+            ;;
+        dev_blocked_list)
+            local kb=$(get_blocked_devices_keyboard)
+            tg_edit_message_text "$chat_id" "$msg_id" "$MSG_BLOCKED_DEVICES_HEADER" "$kb"
+            tg_answer_callback "$cb_id" "" "false"
+            ;;
+        dev_view_*)
+            local mac="${data#dev_view_}"
+            local msg=$(get_device_details_text "$mac")
+            local kb=$(get_device_details_keyboard "$mac")
+            tg_edit_message_text "$chat_id" "$msg_id" "$msg" "$kb"
+            tg_answer_callback "$cb_id" "" "false"
+            ;;
+        dev_refresh_*)
+            local mac="${data#dev_refresh_}"
+            local msg=$(get_device_details_text "$mac")
+            local kb=$(get_device_details_keyboard "$mac")
+            local resp=$(tg_edit_message_text "$chat_id" "$msg_id" "$msg" "$kb")
+            local ok=$(echo "$resp" | jsonfilter -e '@.ok' 2>/dev/null)
+            local desc=$(echo "$resp" | jsonfilter -e '@.description' 2>/dev/null)
+            if [ "$ok" = "true" ] || echo "$desc" | grep -qi "not modified"; then
+                tg_answer_callback "$cb_id" "$MSG_REFRESH_SUCCESS" "false"
+            else
+                tg_answer_callback "$cb_id" "$MSG_REFRESH_ERROR" "false"
+            fi
+            ;;
+        dev_blocked_view_*)
+            local mac="${data#dev_blocked_view_}"
+            local msg=$(get_blocked_device_details_text "$mac")
+            local kb=$(get_blocked_device_details_keyboard "$mac")
+            tg_edit_message_text "$chat_id" "$msg_id" "$msg" "$kb"
+            tg_answer_callback "$cb_id" "" "false"
+            ;;
+        dev_action_kick_*)
+            local mac="${data#dev_action_kick_}"
+            local name=$(get_device_name_by_mac "$mac")
+            local msg=$(printf "$MSG_DEV_CONFIRM_KICK" "$name")
+            local kb="[[{\"text\":\"${BTN_YES}\",\"callback_data\":\"dev_do_kick_${mac}\"},{\"text\":\"${BTN_NO}\",\"callback_data\":\"dev_view_${mac}\"}]]"
+            tg_edit_message_text "$chat_id" "$msg_id" "$msg" "$kb"
+            tg_answer_callback "$cb_id" "" "false"
+            ;;
+        dev_action_block_*)
+            local mac="${data#dev_action_block_}"
+            local name=$(get_device_name_by_mac "$mac")
+            local msg=$(printf "$MSG_DEV_CONFIRM_BLOCK" "$name")
+            local kb="[[{\"text\":\"${BTN_YES}\",\"callback_data\":\"dev_do_block_${mac}\"},{\"text\":\"${BTN_NO}\",\"callback_data\":\"dev_view_${mac}\"}]]"
+            tg_edit_message_text "$chat_id" "$msg_id" "$msg" "$kb"
+            tg_answer_callback "$cb_id" "" "false"
+            ;;
+        dev_action_unblock_*)
+            local mac="${data#dev_action_unblock_}"
+            local name=$(get_device_name_by_mac "$mac")
+            local msg=$(printf "$MSG_DEV_CONFIRM_UNBLOCK" "$name")
+            local kb="[[{\"text\":\"${BTN_YES}\",\"callback_data\":\"dev_do_unblock_${mac}\"},{\"text\":\"${BTN_NO}\",\"callback_data\":\"dev_blocked_view_${mac}\"}]]"
+            tg_edit_message_text "$chat_id" "$msg_id" "$msg" "$kb"
+            tg_answer_callback "$cb_id" "" "false"
+            ;;
+        dev_do_kick_*)
+            local mac="${data#dev_do_kick_}"
+            local name=$(get_device_name_by_mac "$mac")
+            local mac_lower=$(echo "$mac" | tr 'A-Z' 'a-z')
+            for wlan in $(ubus list hostapd.* 2>/dev/null); do
+                ubus call "$wlan" del_client "{\"addr\":\"$mac_lower\", \"mac\":\"$mac_lower\", \"reason\":1, \"deauth\":true, \"ban_time\":60000}" 2>/dev/null
+            done
+            if [ -f "/tmp/dhcp.leases" ]; then
+                sed -i "/$mac_lower/d" /tmp/dhcp.leases
+                sed -i "/$(echo "$mac_lower" | tr 'a-z' 'A-Z')/d" /tmp/dhcp.leases
+                /etc/init.d/dnsmasq restart >/dev/null 2>&1
+            fi
+            local msg=$(printf "$MSG_DEV_KICKED" "$name")
+            local kb="[[{\"text\":\"${BTN_BACK}\",\"callback_data\":\"btn_devices\"}]]"
+            tg_edit_message_text "$chat_id" "$msg_id" "$msg" "$kb"
+            tg_answer_callback "$cb_id" "$MSG_DEV_KICK_RESP" "false"
+            ;;
+        dev_do_block_*)
+            local mac="${data#dev_do_block_}"
+            local name=$(get_device_name_by_mac "$mac")
+            block_device_mac "$mac" "$name"
+            local msg=$(printf "$MSG_DEV_BLOCKED" "$name")
+            local kb="[[{\"text\":\"${BTN_BACK}\",\"callback_data\":\"btn_devices\"}]]"
+            tg_edit_message_text "$chat_id" "$msg_id" "$msg" "$kb"
+            tg_answer_callback "$cb_id" "$MSG_DEV_BLOCK_RESP" "false"
+            ;;
+        dev_do_unblock_*)
+            local mac="${data#dev_do_unblock_}"
+            local name=$(get_device_name_by_mac "$mac")
+            unblock_device_mac "$mac"
+            local msg=$(printf "$MSG_DEV_UNBLOCKED" "$name")
+            local kb="[[{\"text\":\"${BTN_BACK}\",\"callback_data\":\"dev_blocked_list\"}]]"
+            tg_edit_message_text "$chat_id" "$msg_id" "$msg" "$kb"
+            tg_answer_callback "$cb_id" "$MSG_DEV_UNBLOCKED_RESP" "false"
             ;;
         btn_ifaces)
             local kb=$(get_ifaces_keyboard)
             tg_edit_message_text "$chat_id" "$msg_id" "$MSG_IFACES_HEADER" "$kb"
             tg_answer_callback "$cb_id" "" "false"
             ;;
-        if_up_*)
-            local iface="${data#if_up_}"
+        if_view_*)
+            local iface="${data#if_view_}"
+            local msg=$(get_iface_details "$iface")
+            local kb=$(get_iface_details_keyboard "$iface")
+            tg_edit_message_text "$chat_id" "$msg_id" "$msg" "$kb"
+            tg_answer_callback "$cb_id" "" "false"
+            ;;
+        if_action_up_*)
+            local iface="${data#if_action_up_}"
             local msg=$(printf "$MSG_IFACE_CONFIRM_UP" "$iface")
-            local kb="[[{\"text\":\"${BTN_YES}\",\"callback_data\":\"do_if_up_${iface}\"},{\"text\":\"${BTN_NO}\",\"callback_data\":\"btn_ifaces\"}]]"
+            local kb="[[{\"text\":\"${BTN_YES}\",\"callback_data\":\"if_do_up_${iface}\"},{\"text\":\"${BTN_NO}\",\"callback_data\":\"if_view_${iface}\"}]]"
             tg_edit_message_text "$chat_id" "$msg_id" "$msg" "$kb"
             tg_answer_callback "$cb_id" "" "false"
             ;;
-        if_down_*)
-            local iface="${data#if_down_}"
+        if_action_down_*)
+            local iface="${data#if_action_down_}"
             local msg=$(printf "$MSG_IFACE_CONFIRM_DOWN" "$iface")
-            local kb="[[{\"text\":\"${BTN_YES}\",\"callback_data\":\"do_if_down_${iface}\"},{\"text\":\"${BTN_NO}\",\"callback_data\":\"btn_ifaces\"}]]"
+            local kb="[[{\"text\":\"${BTN_YES}\",\"callback_data\":\"if_do_down_${iface}\"},{\"text\":\"${BTN_NO}\",\"callback_data\":\"if_view_${iface}\"}]]"
             tg_edit_message_text "$chat_id" "$msg_id" "$msg" "$kb"
             tg_answer_callback "$cb_id" "" "false"
             ;;
-        do_if_up_*)
-            local iface="${data#do_if_up_}"
-            ubus call network.interface up "{\"interface\":\"$iface\"}"
-            local msg=$(printf "$MSG_IFACE_DONE_UP" "$iface")
-            local kb="[[{\"text\":\"${BTN_BACK}\",\"callback_data\":\"btn_ifaces\"}]]"
+        if_action_restart_*)
+            local iface="${data#if_action_restart_}"
+            local msg=$(printf "$MSG_IFACE_CONFIRM_REBOOT" "$iface")
+            local kb="[[{\"text\":\"${BTN_YES}\",\"callback_data\":\"if_do_restart_${iface}\"},{\"text\":\"${BTN_NO}\",\"callback_data\":\"if_view_${iface}\"}]]"
             tg_edit_message_text "$chat_id" "$msg_id" "$msg" "$kb"
-            tg_answer_callback "$cb_id" "Interface $iface enabled" "false"
+            tg_answer_callback "$cb_id" "" "false"
             ;;
-        do_if_down_*)
-            local iface="${data#do_if_down_}"
-            ubus call network.interface down "{\"interface\":\"$iface\"}"
-            local msg=$(printf "$MSG_IFACE_DONE_DOWN" "$iface")
-            local kb="[[{\"text\":\"${BTN_BACK}\",\"callback_data\":\"btn_ifaces\"}]]"
+        if_do_up_*)
+            local iface="${data#if_do_up_}"
+            ubus call network.interface."$iface" up 2>/dev/null
+            tg_answer_callback "$cb_id" "Interface $iface enabling..." "false"
+            sleep 1
+            local msg=$(get_iface_details "$iface")
+            local kb=$(get_iface_details_keyboard "$iface")
             tg_edit_message_text "$chat_id" "$msg_id" "$msg" "$kb"
-            tg_answer_callback "$cb_id" "Interface $iface disabled" "false"
+            ;;
+        if_do_down_*)
+            local iface="${data#if_do_down_}"
+            ubus call network.interface."$iface" down 2>/dev/null
+            tg_answer_callback "$cb_id" "Interface $iface disabling..." "false"
+            sleep 1
+            local msg=$(get_iface_details "$iface")
+            local kb=$(get_iface_details_keyboard "$iface")
+            tg_edit_message_text "$chat_id" "$msg_id" "$msg" "$kb"
+            ;;
+        if_do_restart_*)
+            local iface="${data#if_do_restart_}"
+            ubus call network.interface."$iface" down 2>/dev/null
+            sleep 1
+            ubus call network.interface."$iface" up 2>/dev/null
+            tg_answer_callback "$cb_id" "Interface $iface restarting..." "false"
+            sleep 1
+            local msg=$(get_iface_details "$iface")
+            local kb=$(get_iface_details_keyboard "$iface")
+            tg_edit_message_text "$chat_id" "$msg_id" "$msg" "$kb"
             ;;
         btn_about)
             local msg=$(printf "$MSG_ABOUT_TEXT" "$BOT_VERSION")

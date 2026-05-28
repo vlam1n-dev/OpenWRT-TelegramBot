@@ -69,7 +69,7 @@
         var content = document.getElementById('log_modal_content');
         
         modal.style.display = 'flex';
-        title.innerHTML = type === 'bot' ? '<%:Bot Activity Log%>' : '<%:Unauthorized Access Log%>';
+        title.innerHTML = type === 'bot' ? '<%:Bot Activity Log%>' : (type === 'auth' ? '<%:Unauthorized Access Log%>' : '<%:Error & API Log%>');
         content.innerHTML = '<em><%:Loading...%></em>';
         
         fetch_log_content(type);
@@ -159,6 +159,12 @@
             <label class="cbi-value-title"><%:Bot Activity Log%></label>
             <div class="cbi-value-field">
                 <input type="button" class="btn cbi-button cbi-button-apply" value="<%:View Bot Log%>" onclick="view_log('bot')" />
+            </div>
+        </div>
+        <div class="cbi-value">
+            <label class="cbi-value-title"><%:Error Log%></label>
+            <div class="cbi-value-field">
+                <input type="button" class="btn cbi-button cbi-button-apply" value="<%:View Error Log%>" onclick="view_log('error')" />
             </div>
         </div>
         <div class="cbi-value">

@@ -12,9 +12,32 @@ fi
 
 load_config
 
+# Redirect stderr to error log
+ERROR_FIFO="${BOT_DIR}/stderr_mon_$$"
+if mkfifo "$ERROR_FIFO" 2>/dev/null; then
+    (
+        while read -r line; do
+            log_err "sh: $line"
+        done < "$ERROR_FIFO"
+    ) &
+    ERROR_LOGGER_PID=$!
+    exec 2> "$ERROR_FIFO"
+    trap 'exec 2>&-; [ -n "$ERROR_LOGGER_PID" ] && kill "$ERROR_LOGGER_PID" 2>/dev/null; rm -f "$ERROR_FIFO"' EXIT INT TERM
+fi
+
 echo $$ > "${BOT_DIR}/monitor.pid"
 
 [ -z "$API_TOKEN" ] || [ -z "$ADMIN_IDS" ] && exit 0
+
+# Initialize active MACs on startup to prevent spamming notifications on reboot/restart
+mkdir -p "${BOT_DIR}"
+[ ! -f "/etc/telegram-known-macs" ] && touch "/etc/telegram-known-macs"
+get_active_macs > "${BOT_DIR}/active_macs"
+while read -r mac; do
+    if [ -n "$mac" ] && ! grep -qi "^${mac}$" "/etc/telegram-known-macs"; then
+        echo "$mac" >> "/etc/telegram-known-macs"
+    fi
+done < "${BOT_DIR}/active_macs"
 
 send_notification() {
     local message="$1"
@@ -72,8 +95,7 @@ check_wan_ip() {
     local enabled=$(uci -q get telegram.notifications.wan_ip_change || echo 0)
     [ "$enabled" != "1" ] && return
     
-    local wan_ip=$(network_get_ipaddr wan 2>/dev/null)
-    [ -z "$wan_ip" ] && wan_ip=$(ip -4 addr show br-wan 2>/dev/null | grep -oP '(?<=inet\s)\d+(\.\d+){3}')
+    local wan_ip=$(ubus call network.interface.wan status 2>/dev/null | jsonfilter -e '@["ipv4-address"][0].address' 2>/dev/null)
     [ -z "$wan_ip" ] && wan_ip=$(wget -qO- http://checkip.amazonaws.com 2>/dev/null)
     [ -z "$wan_ip" ] && return
     
@@ -94,19 +116,63 @@ check_new_devices() {
     [ "$enabled" != "1" ] && return
     
     local leases="/tmp/dhcp.leases"
-    local known_macs_file="${BOT_DIR}/known_macs"
+    local known_macs_file="/etc/telegram-known-macs"
+    local active_macs_file="${BOT_DIR}/active_macs"
     
-    [ ! -f "$leases" ] && return
     [ ! -f "$known_macs_file" ] && touch "$known_macs_file"
+    [ ! -f "$active_macs_file" ] && touch "$active_macs_file"
     
-    while read -r lease_time mac ip name client_id; do
-        if ! grep -qi "^${mac}$" "$known_macs_file"; then
-            [ "$name" = "*" ] && name="Unknown"
-            local msg=$(printf "$NOTIFY_NEW_DEVICE" "$name" "$ip" "$mac")
+    local current_active=$(get_active_macs)
+    
+    for mac in $current_active; do
+        if ! grep -qi "^${mac}$" "$active_macs_file"; then
+            # Device just connected! Wait 2 seconds for DHCP lease to complete
+            sleep 2
+            
+            local ip="-"
+            local name="Unknown"
+            if [ -f "$leases" ]; then
+                local lease_line=$(grep -i "$mac" "$leases" | head -n 1)
+                if [ -n "$lease_line" ]; then
+                    ip=$(echo "$lease_line" | awk '{print $3}')
+                    name=$(echo "$lease_line" | awk '{print $4}')
+                    [ "$name" = "*" ] && name="Unknown"
+                fi
+            fi
+            
+            # Fallback to static leases in UCI if not found in active leases
+            if [ "$name" = "Unknown" ] || [ "$ip" = "-" ]; then
+                local idx=0
+                while true; do
+                    local cfg_mac=$(uci -q get dhcp.@host[$idx].mac)
+                    [ -z "$cfg_mac" ] && break
+                    if [ "$(echo "$cfg_mac" | tr 'A-Z' 'a-z')" = "$mac" ]; then
+                        local s_name=$(uci -q get dhcp.@host[$idx].name)
+                        local s_ip=$(uci -q get dhcp.@host[$idx].ip)
+                        [ -n "$s_name" ] && name="$s_name"
+                        [ -n "$s_ip" ] && ip="$s_ip"
+                        break
+                    fi
+                    idx=$((idx + 1))
+                done
+            fi
+            
+            local dev_iface=$(get_device_interface "$mac")
+            
+            local status_msg=""
+            if grep -qi "^${mac}$" "$known_macs_file"; then
+                status_msg="$MSG_DEV_STATUS_KNOWN"
+            else
+                status_msg="$MSG_DEV_STATUS_NEW"
+                echo "$mac" >> "$known_macs_file"
+            fi
+            
+            local msg=$(printf "$NOTIFY_NEW_DEVICE" "$status_msg" "$name" "$dev_iface" "$ip" "$mac")
             send_notification "$msg"
-            echo "$mac" >> "$known_macs_file"
         fi
-    done < "$leases"
+    done
+    
+    echo "$current_active" > "$active_macs_file"
 }
 
 check_updates() {
@@ -133,7 +199,7 @@ check_updates() {
     
     [ -z "$latest" ] && return
     
-    local current="1.0.0"
+    local current="1.0.24"
     [ -f "${BOT_BASE_DIR}/VERSION" ] && current=$(cat "${BOT_BASE_DIR}/VERSION")
     
     if [ "$latest" != "$current" ]; then
@@ -146,12 +212,22 @@ check_updates() {
 }
 
 # Run all checks in a loop for procd
+last_slow_check=0
+slow_interval=60
+
 while true; do
-    check_cpu
-    check_ram
-    check_wan_ip
+    # Fast checks (every 10 seconds)
     check_new_devices
-    check_updates
     
-    sleep 60
+    # Slow checks (every 60 seconds)
+    now=$(date +%s)
+    if [ "$((now - last_slow_check))" -ge "$slow_interval" ]; then
+        check_cpu
+        check_ram
+        check_wan_ip
+        check_updates
+        last_slow_check=$now
+    fi
+    
+    sleep 10
 done

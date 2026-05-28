@@ -56,7 +56,7 @@ function action_check_update()
         local_ver = sys.exec("cat ./VERSION 2>/dev/null")
     end
     if not local_ver or local_ver == "" then
-        local_ver = "1.0.0"
+        local_ver = "1.0.24"
     end
     local_ver = string.gsub(local_ver, "%s+", "")
 
@@ -82,6 +82,8 @@ function action_read_log(log_type)
         path = "/tmp/telegram-bot/bot.log"
     elseif log_type == "auth" then
         path = "/tmp/telegram-bot/unauth.log"
+    elseif log_type == "error" then
+        path = "/tmp/telegram-bot/error.log"
     else
         luci.http.prepare_content("application/json")
         luci.http.write_json({ content = nil, error = "Invalid log type" })
@@ -105,6 +107,8 @@ function action_clear_log(log_type)
         path = "/tmp/telegram-bot/bot.log"
     elseif log_type == "auth" then
         path = "/tmp/telegram-bot/unauth.log"
+    elseif log_type == "error" then
+        path = "/tmp/telegram-bot/error.log"
     else
         luci.http.prepare_content("application/json")
         luci.http.write_json({ success = false, error = "Invalid log type" })
