@@ -12,6 +12,17 @@ fi
 
 load_config
 
+MON_PID_FILE="${BOT_DIR}/monitor.pid"
+
+cleanup() {
+    exec 2>&-
+    [ -n "$ERROR_LOGGER_PID" ] && kill "$ERROR_LOGGER_PID" 2>/dev/null
+    [ -n "$ERROR_FIFO" ] && rm -f "$ERROR_FIFO"
+    rm -f "$MON_PID_FILE"
+}
+trap cleanup EXIT
+trap 'exit 1' INT TERM
+
 # Redirect stderr to error log
 ERROR_FIFO="${BOT_DIR}/stderr_mon_$$"
 if mkfifo "$ERROR_FIFO" 2>/dev/null; then
@@ -22,10 +33,9 @@ if mkfifo "$ERROR_FIFO" 2>/dev/null; then
     ) &
     ERROR_LOGGER_PID=$!
     exec 2> "$ERROR_FIFO"
-    trap 'exec 2>&-; [ -n "$ERROR_LOGGER_PID" ] && kill "$ERROR_LOGGER_PID" 2>/dev/null; rm -f "$ERROR_FIFO"' EXIT INT TERM
 fi
 
-echo $$ > "${BOT_DIR}/monitor.pid"
+echo $$ > "$MON_PID_FILE"
 
 [ -z "$API_TOKEN" ] || [ -z "$ADMIN_IDS" ] && exit 0
 

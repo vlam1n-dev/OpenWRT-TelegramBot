@@ -14,6 +14,15 @@ fi
 
 load_config
 
+cleanup() {
+    exec 2>&-
+    [ -n "$ERROR_LOGGER_PID" ] && kill "$ERROR_LOGGER_PID" 2>/dev/null
+    [ -n "$ERROR_FIFO" ] && rm -f "$ERROR_FIFO"
+    rm -f "$PID_FILE"
+}
+trap cleanup EXIT
+trap 'exit 1' INT TERM
+
 # Redirect stderr to error log
 ERROR_FIFO="${BOT_DIR}/stderr_bot_$$"
 if mkfifo "$ERROR_FIFO" 2>/dev/null; then
@@ -24,7 +33,6 @@ if mkfifo "$ERROR_FIFO" 2>/dev/null; then
     ) &
     ERROR_LOGGER_PID=$!
     exec 2> "$ERROR_FIFO"
-    trap 'exec 2>&-; [ -n "$ERROR_LOGGER_PID" ] && kill "$ERROR_LOGGER_PID" 2>/dev/null; rm -f "$ERROR_FIFO"' EXIT INT TERM
 fi
 
 if [ -z "$API_TOKEN" ]; then
