@@ -16,7 +16,7 @@ CURL_CONNECT_TIMEOUT=10
 CURL_MAX_TIME=30
 LANG_CODE="en"
 GITHUB_REPO="vlam1n-dev/OpenWRT-TelegramBot"
-BOT_VERSION="1.0.32"
+BOT_VERSION="1.0.67"
 [ -f "/usr/lib/telegram-bot/VERSION" ] && BOT_VERSION=$(cat /usr/lib/telegram-bot/VERSION)
 [ -f "./VERSION" ] && BOT_VERSION=$(cat ./VERSION)
 
@@ -834,4 +834,187 @@ get_blocked_device_details_text() {
         "$name" "$MSG_BLOCKED_STATUS" \
         "$MSG_DEVICE_MAC" "$mac_str"
 }
+
+# ── User State Management ──
+set_user_state() {
+    local user_id="$1"
+    local state_val="$2"
+    mkdir -p "/tmp/telegram-bot"
+    echo "$state_val" > "/tmp/telegram-bot/state_${user_id}"
+}
+
+get_user_state() {
+    local user_id="$1"
+    cat "/tmp/telegram-bot/state_${user_id}" 2>/dev/null || echo ""
+}
+
+clear_user_state() {
+    local user_id="$1"
+    rm -f "/tmp/telegram-bot/state_${user_id}"
+}
+
+# ── Wake on Lan (WoL) ──
+send_wol_packet() {
+    local mac="$1"
+    if command -v etherwake >/dev/null 2>&1; then
+        etherwake -i br-lan "$mac"
+        return 0
+    elif command -v wol >/dev/null 2>&1; then
+        wol -i 192.168.1.255 "$mac" >/dev/null 2>&1
+        return 0
+    else
+        return 1
+    fi
+}
+
+get_pkg_install_cmd() {
+    local pkgs="$1"
+    if command -v apk >/dev/null 2>&1; then
+        echo "apk update && apk add ${pkgs}"
+    else
+        echo "opkg update && opkg install ${pkgs}"
+    fi
+}
+
+# ── Traffic Statistics (vnStat & nlbwmon) ──
+get_traffic_stats_vnstat() {
+    local mode="$1" # "-h" (hours), "-d" (days), "-m" (months)
+    if ! command -v vnstat >/dev/null 2>&1; then
+        echo "ERR_VNSTAT"
+        return
+    fi
+    
+    # Get active WAN interface (as calculated in get_system_info)
+    local wan_iface=$(uci -q get network.wan.ifname 2>/dev/null)
+    [ -z "$wan_iface" ] && wan_iface="wan"
+    local interface=$(ubus call network.interface."$wan_iface" status 2>/dev/null | jsonfilter -e '@.l3_device' 2>/dev/null)
+    [ -z "$interface" ] && interface=$(vnstat --oneline | awk -F';' '{print $2}')
+    [ -z "$interface" ] && interface="wan"
+
+    # Make sure database exists for interface
+    if ! vnstat -i "$interface" >/dev/null 2>&1; then
+        vnstat "$mode" 2>/dev/null
+    else
+        vnstat -i "$interface" "$mode" 2>/dev/null
+    fi
+}
+
+get_traffic_stats_nlbwmon() {
+    if ! command -v nlbw >/dev/null 2>&1; then
+        echo "ERR_NLBWMON"
+        return
+    fi
+    nlbw -c csv -n 10 2>/dev/null | awk -F',' '
+        function format_bytes(bytes) {
+            if (bytes >= 1073741824) return sprintf("%.2f GB", bytes / 1073741824)
+            if (bytes >= 1048576) return sprintf("%.2f MB", bytes / 1048576)
+            if (bytes >= 1024) return sprintf("%.1f KB", bytes / 1024)
+            return bytes " B"
+        }
+        NR == 1 {next}
+        {
+            ip=$1; rx=format_bytes($2); tx=format_bytes($3); total=format_bytes($4);
+            # Try to resolve hostname for IP/MAC
+            cmd = "grep -i " ip " /tmp/dhcp.leases 2>/dev/null | awk \x27{print $4}\x27"
+            cmd | getline hostname
+            close(cmd)
+            if (!hostname || hostname == "*") {
+                hostname = ip
+            }
+            if (length(hostname) > 15) {
+                hostname = substr(hostname, 1, 12) "..."
+            }
+            printf "📱 <b>%s</b>: 📥 %s | 📤 %s (Total: %s)\n", hostname, rx, tx, total
+        }
+    '
+}
+
+# ── Port Forwarding (firewall redirect) ──
+get_port_rules() {
+    # Returns redirect rules in format: name|enabled|proto|src_dport|dest_ip|dest_port
+    local index=0
+    while true; do
+        local name=$(uci -q get firewall.@redirect[$index].name)
+        [ -z "$name" ] && break
+        local enabled=$(uci -q get firewall.@redirect[$index].enabled || echo "1")
+        local proto=$(uci -q get firewall.@redirect[$index].proto || echo "tcp")
+        local src_dport=$(uci -q get firewall.@redirect[$index].src_dport)
+        local dest_ip=$(uci -q get firewall.@redirect[$index].dest_ip)
+        local dest_port=$(uci -q get firewall.@redirect[$index].dest_port)
+        
+        echo "${name}|${enabled}|${proto}|${src_dport}|${dest_ip}|${dest_port}"
+        index=$((index + 1))
+    done
+}
+
+toggle_port_rule() {
+    local target_name="$1"
+    local action="$2" # "1" to enable, "0" to disable
+    local index=0
+    while true; do
+        local name=$(uci -q get firewall.@redirect[$index].name)
+        [ -z "$name" ] && break
+        if [ "$name" = "$target_name" ]; then
+            uci set firewall.@redirect[$index].enabled="$action"
+            uci commit firewall
+            /etc/init.d/firewall reload >/dev/null 2>&1
+            return 0
+        fi
+        index=$((index + 1))
+    done
+    return 1
+}
+
+delete_port_rule() {
+    local target_name="$1"
+    local index=0
+    while true; do
+        local name=$(uci -q get firewall.@redirect[$index].name)
+        [ -z "$name" ] && break
+        if [ "$name" = "$target_name" ]; then
+            uci delete firewall.@redirect[$index]
+            uci commit firewall
+            /etc/init.d/firewall reload >/dev/null 2>&1
+            return 0
+        fi
+        index=$((index + 1))
+    done
+    return 1
+}
+
+add_port_rule() {
+    local name="$1"
+    local proto="$2"
+    local ext_port="$3"
+    local int_ip="$4"
+    local int_port="$5"
+    
+    # Check if name is already taken
+    local index=0
+    while true; do
+        local existing_name=$(uci -q get firewall.@redirect[$index].name)
+        [ -z "$existing_name" ] && break
+        if [ "$existing_name" = "$name" ]; then
+            # Append random suffix if name is duplicate
+            name="${name}_$(hexdump -n 2 -e '/2 "%u"' /dev/urandom 2>/dev/null || echo $$)"
+            break
+        fi
+        index=$((index + 1))
+    done
+    
+    uci add firewall redirect >/dev/null
+    uci set firewall.@redirect[-1].name="$name"
+    uci set firewall.@redirect[-1].src="wan"
+    uci set firewall.@redirect[-1].dest="lan"
+    uci set firewall.@redirect[-1].proto="$proto"
+    uci set firewall.@redirect[-1].src_dport="$ext_port"
+    uci set firewall.@redirect[-1].dest_ip="$int_ip"
+    uci set firewall.@redirect[-1].dest_port="$int_port"
+    uci set firewall.@redirect[-1].target="DNAT"
+    uci set firewall.@redirect[-1].enabled="1"
+    uci commit firewall
+    /etc/init.d/firewall reload >/dev/null 2>&1
+    return 0
+}
+
 

@@ -63,7 +63,7 @@ function action_check_update()
         local_ver = sys.exec("cat ./VERSION 2>/dev/null")
     end
     if not local_ver or local_ver == "" then
-        local_ver = "1.0.32"
+        local_ver = "1.0.67"
     end
     local_ver = string.gsub(local_ver, "%s+", "")
 

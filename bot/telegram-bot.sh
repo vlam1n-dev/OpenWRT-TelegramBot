@@ -36,7 +36,11 @@ echo $$ > "$PID_FILE"
 log_info "Bot started, PID=$$"
 
 get_main_keyboard() {
-    echo "[[{\"text\":\"${BTN_RESTART}\",\"callback_data\":\"btn_reboot\"},{\"text\":\"${BTN_INTERFACES}\",\"callback_data\":\"btn_ifaces\"}], [{\"text\":\"${BTN_STATS}\",\"callback_data\":\"btn_stats\"},{\"text\":\"${BTN_DEVICES}\",\"callback_data\":\"btn_devices\"}], [{\"text\":\"${BTN_SETTINGS}\",\"callback_data\":\"btn_settings\"},{\"text\":\"${BTN_ABOUT}\",\"callback_data\":\"btn_about\"}], [{\"text\":\"${BTN_REFRESH}\",\"callback_data\":\"btn_refresh\"}]]"
+    echo "[[{\"text\":\"${BTN_RESTART}\",\"callback_data\":\"btn_reboot\"},{\"text\":\"${BTN_INTERFACES}\",\"callback_data\":\"btn_ifaces\"}], [{\"text\":\"${BTN_STATS}\",\"callback_data\":\"btn_stats\"},{\"text\":\"${BTN_DEVICES}\",\"callback_data\":\"btn_devices\"}], [{\"text\":\"${BTN_DIAG}\",\"callback_data\":\"btn_diag\"},{\"text\":\"${BTN_PORTS}\",\"callback_data\":\"btn_ports\"}], [{\"text\":\"${BTN_SETTINGS}\",\"callback_data\":\"btn_settings\"},{\"text\":\"${BTN_ABOUT}\",\"callback_data\":\"btn_about\"}], [{\"text\":\"${BTN_REFRESH}\",\"callback_data\":\"btn_refresh\"}]]"
+}
+
+get_diag_keyboard() {
+    echo "[[{\"text\":\"Ping\",\"callback_data\":\"diag_ping\"},{\"text\":\"Traceroute\",\"callback_data\":\"diag_traceroute\"}], [{\"text\":\"DNS Lookup\",\"callback_data\":\"diag_dns\"},{\"text\":\"Port Check\",\"callback_data\":\"diag_port\"}], [{\"text\":\"${BTN_BACK}\",\"callback_data\":\"btn_main\"}]]"
 }
 
 get_ifaces_keyboard() {
@@ -171,7 +175,69 @@ get_blocked_devices_keyboard() {
 
 get_device_details_keyboard() {
     local mac="$1"
-    echo "[[{\"text\":\"${BTN_REFRESH}\",\"callback_data\":\"dev_refresh_${mac}\"}], [{\"text\":\"${BTN_KICK}\",\"callback_data\":\"dev_action_kick_${mac}\"},{\"text\":\"${BTN_BLOCK}\",\"callback_data\":\"dev_action_block_${mac}\"}], [{\"text\":\"${BTN_BACK}\",\"callback_data\":\"btn_devices\"}]]"
+    echo "[[{\"text\":\"${BTN_REFRESH}\",\"callback_data\":\"dev_refresh_${mac}\"}], [{\"text\":\"${BTN_KICK}\",\"callback_data\":\"dev_action_kick_${mac}\"},{\"text\":\"${BTN_BLOCK}\",\"callback_data\":\"dev_action_block_${mac}\"}], [{\"text\":\"${BTN_WOL}\",\"callback_data\":\"dev_wol_${mac}\"}], [{\"text\":\"${BTN_BACK}\",\"callback_data\":\"btn_devices\"}]]"
+}
+
+get_traffic_keyboard() {
+    echo "[[{\"text\":\"${BTN_REFRESH}\",\"callback_data\":\"btn_stats_refresh\"}], [{\"text\":\"${BTN_TRAFFIC_HOUR}\",\"callback_data\":\"btn_traffic_hour\"},{\"text\":\"${BTN_TRAFFIC_DAY}\",\"callback_data\":\"btn_traffic_day\"}], [{\"text\":\"${BTN_TRAFFIC_MONTH}\",\"callback_data\":\"btn_traffic_month\"},{\"text\":\"${BTN_TRAFFIC_DEVICE}\",\"callback_data\":\"btn_traffic_device\"}], [{\"text\":\"${BTN_BACK}\",\"callback_data\":\"btn_main\"}]]"
+}
+
+get_ports_keyboard() {
+    local kb="["
+    local first=1
+    local list=$(get_port_rules)
+    local old_ifs="$IFS"
+    IFS=$'\n'
+    for line in $list; do
+        IFS="$old_ifs"
+        [ -z "$line" ] && continue
+        local name="${line%%|*}"
+        [ -z "$name" ] && continue
+        
+        # Parse enabled status
+        local temp="${line#*|}"
+        local enabled="${temp%%|*}"
+        
+        local btn_text="$name"
+        if [ "$enabled" = "1" ]; then
+            btn_text="${btn_text} ✅"
+        else
+            btn_text="${btn_text} ❌"
+        fi
+        
+        if [ "$first" -eq 1 ]; then
+            kb="${kb}[{\"text\":\"${btn_text}\",\"callback_data\":\"port_view_${name}\"}]"
+            first=0
+        else
+            kb="${kb},[{\"text\":\"${btn_text}\",\"callback_data\":\"port_view_${name}\"}]"
+        fi
+        IFS=$'\n'
+    done
+    IFS="$old_ifs"
+    
+    if [ "$first" -eq 1 ]; then
+        kb="[[{\"text\":\"${BTN_PORT_ADD}\",\"callback_data\":\"port_add\"}], [{\"text\":\"${BTN_BACK}\",\"callback_data\":\"btn_main\"}]]"
+    else
+        kb="${kb},[{\"text\":\"${BTN_PORT_ADD}\",\"callback_data\":\"port_add\"}], [{\"text\":\"${BTN_BACK}\",\"callback_data\":\"btn_main\"}]]"
+    fi
+    echo "$kb"
+}
+
+get_port_details_keyboard() {
+    local name="$1"
+    local enabled="$2"
+    local btn_toggle=""
+    if [ "$enabled" = "1" ]; then
+        btn_toggle="{\"text\":\"🔴 Выключить\",\"callback_data\":\"port_toggle_${name}_0\"}"
+    else
+        btn_toggle="{\"text\":\"🟢 Включить\",\"callback_data\":\"port_toggle_${name}_1\"}"
+    fi
+    
+    echo "[[${btn_toggle}], [{\"text\":\"🗑 Удалить\",\"callback_data\":\"port_delete_${name}\"}], [{\"text\":\"${BTN_BACK}\",\"callback_data\":\"btn_ports\"}]]"
+}
+
+get_port_proto_keyboard() {
+    echo "[[{\"text\":\"${BTN_PORT_PROTO_TCP}\",\"callback_data\":\"port_add_proto_tcp\"},{\"text\":\"${BTN_PORT_PROTO_UDP}\",\"callback_data\":\"port_add_proto_udp\"}], [{\"text\":\"${BTN_PORT_PROTO_ALL}\",\"callback_data\":\"port_add_proto_all\"}]]"
 }
 
 get_blocked_device_details_keyboard() {
@@ -226,6 +292,130 @@ process_message() {
     if ! check_rate_limit "$user_id"; then
         tg_send_message "$chat_id" "$MSG_RATE_LIMITED" ""
         return
+    fi
+    
+    # Handle cancellation
+    if [ "$text" = "/cancel" ]; then
+        clear_user_state "$user_id"
+        tg_send_message "$chat_id" "$MSG_CANCEL_MSG" "$(get_main_keyboard)"
+        return
+    fi
+    
+    # Reset state on /start
+    if [ "$text" = "/start" ]; then
+        clear_user_state "$user_id"
+    fi
+
+    # Read user state
+    local state=$(get_user_state "$user_id")
+    if [ -n "$state" ]; then
+        # ─── Diagnostics Handling ───
+        if [ "$state" = "diag_ping" ] || [ "$state" = "diag_traceroute" ] || [ "$state" = "diag_dns" ] || [ "$state" = "diag_port" ]; then
+            # Validate input to prevent command injection
+            # Only allow alphanumeric, dots, dashes, colons, underscores
+            if ! echo "$text" | grep -qE '^[a-zA-Z0-9._-]+(:[0-9]+)?$'; then
+                tg_send_message "$chat_id" "$MSG_DIAG_INVALID_INPUT" "$(get_diag_keyboard)"
+                clear_user_state "$user_id"
+                return
+            fi
+            
+            local run_msg_resp=$(tg_send_message "$chat_id" "$MSG_DIAG_RUNNING" "")
+            local run_msg_id=$(echo "$run_msg_resp" | jsonfilter -e '@.result.message_id' 2>/dev/null)
+            local result=""
+            
+            if [ "$state" = "diag_ping" ]; then
+                result=$(ping -w 5 -c 4 "$text" 2>&1)
+            elif [ "$state" = "diag_traceroute" ]; then
+                result=$(traceroute -q 1 -w 2 -m 15 "$text" 2>&1)
+            elif [ "$state" = "diag_dns" ]; then
+                result=$(nslookup "$text" 2>&1)
+            elif [ "$state" = "diag_port" ]; then
+                local host="${text%%:*}"
+                local port="${text##*:}"
+                if [ "$host" = "$text" ] || [ -z "$port" ] || ! echo "$port" | grep -qE '^[0-9]+$'; then
+                    if [ -n "$run_msg_id" ]; then
+                        tg_edit_message_text "$chat_id" "$run_msg_id" "$MSG_DIAG_INVALID_INPUT" "$(get_diag_keyboard)"
+                    else
+                        tg_send_message "$chat_id" "$MSG_DIAG_INVALID_INPUT" "$(get_diag_keyboard)"
+                    fi
+                    clear_user_state "$user_id"
+                    return
+                fi
+                result=$(nc -w 3 -z "$host" "$port" 2>&1)
+                if [ $? -eq 0 ]; then
+                    result="Connection to ${host} ${port} port [tcp/*] succeeded!"
+                else
+                    result="Connection to ${host} ${port} port [tcp/*] failed: Connection timed out"
+                fi
+            fi
+            
+            # Format and edit/send result
+            local formatted_res=$(printf "$MSG_DIAG_RESULT" "$result")
+            if [ -n "$run_msg_id" ]; then
+                tg_edit_message_text "$chat_id" "$run_msg_id" "$formatted_res" "$(get_diag_keyboard)"
+            else
+                tg_send_message "$chat_id" "$formatted_res" "$(get_diag_keyboard)"
+            fi
+            clear_user_state "$user_id"
+            return
+        
+        # ─── Port Forwarding Wizard Handling ───
+        elif echo "$state" | grep -q "^port_add_"; then
+            local step="${state%%|*}"
+            
+            if [ "$step" = "port_add_name" ]; then
+                # Validate rule name (letters, numbers, dash, underscore, space allowed, max 25 chars)
+                if [ ${#text} -gt 25 ] || ! echo "$text" | grep -qE '^[a-zA-Z0-9_ -]+$'; then
+                    tg_send_message "$chat_id" "$MSG_DIAG_INVALID_INPUT" ""
+                    return
+                fi
+                set_user_state "$user_id" "port_add_ext|name=${text}"
+                tg_send_message "$chat_id" "$MSG_PORT_ADD_EXT" ""
+                return
+                
+            elif [ "$step" = "port_add_ext" ]; then
+                local name="${state#*name=}"
+                name="${name%%|*}"
+                # Validate port (1-65535)
+                if ! echo "$text" | grep -qE '^[0-9]+$' || [ "$text" -lt 1 ] 2>/dev/null || [ "$text" -gt 65535 ] 2>/dev/null; then
+                    tg_send_message "$chat_id" "$MSG_PORT_INVALID_PORT" ""
+                    return
+                fi
+                set_user_state "$user_id" "port_add_ip|name=${name}|ext=${text}"
+                tg_send_message "$chat_id" "$MSG_PORT_ADD_IP" ""
+                return
+                
+            elif [ "$step" = "port_add_ip" ]; then
+                local name="${state#*name=}"
+                name="${name%%|*}"
+                local ext="${state#*ext=}"
+                ext="${ext%%|*}"
+                # Validate local IP address format
+                if ! echo "$text" | grep -qE '^192\.168\.[0-9]{1,3}\.[0-9]{1,3}$' && ! echo "$text" | grep -qE '^10\.[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}$' && ! echo "$text" | grep -qE '^172\.(1[6-9]|2[0-9]|3[0-1])\.[0-9]{1,3}\.[0-9]{1,3}$'; then
+                    tg_send_message "$chat_id" "$MSG_PORT_INVALID_IP" ""
+                    return
+                fi
+                set_user_state "$user_id" "port_add_int|name=${name}|ext=${ext}|ip=${text}"
+                tg_send_message "$chat_id" "$MSG_PORT_ADD_INT" ""
+                return
+                
+            elif [ "$step" = "port_add_int" ]; then
+                local name="${state#*name=}"
+                name="${name%%|*}"
+                local ext="${state#*ext=}"
+                ext="${ext%%|*}"
+                local ip="${state#*ip=}"
+                ip="${ip%%|*}"
+                # Validate port (1-65535)
+                if ! echo "$text" | grep -qE '^[0-9]+$' || [ "$text" -lt 1 ] 2>/dev/null || [ "$text" -gt 65535 ] 2>/dev/null; then
+                    tg_send_message "$chat_id" "$MSG_PORT_INVALID_PORT" ""
+                    return
+                fi
+                set_user_state "$user_id" "port_add_proto|name=${name}|ext=${ext}|ip=${ip}|int=${text}"
+                tg_send_message "$chat_id" "$MSG_PORT_ADD_PROTO" "$(get_port_proto_keyboard)"
+                return
+            fi
+        fi
     fi
     
     case "$text" in
@@ -292,13 +482,13 @@ process_callback() {
             ;;
         btn_stats)
             local stats=$(get_system_stats)
-            local kb="[[{\"text\":\"${BTN_REFRESH}\",\"callback_data\":\"btn_stats_refresh\"}], [{\"text\":\"${BTN_BACK}\",\"callback_data\":\"btn_main\"}]]"
+            local kb=$(get_traffic_keyboard)
             tg_edit_message_text "$chat_id" "$msg_id" "$stats" "$kb"
             tg_answer_callback "$cb_id" "" "false"
             ;;
         btn_stats_refresh)
             local stats=$(get_system_stats)
-            local kb="[[{\"text\":\"${BTN_REFRESH}\",\"callback_data\":\"btn_stats_refresh\"}], [{\"text\":\"${BTN_BACK}\",\"callback_data\":\"btn_main\"}]]"
+            local kb=$(get_traffic_keyboard)
             local resp=$(tg_edit_message_text "$chat_id" "$msg_id" "$stats" "$kb")
             local ok=$(echo "$resp" | jsonfilter -e '@.ok' 2>/dev/null)
             local desc=$(echo "$resp" | jsonfilter -e '@.description' 2>/dev/null)
@@ -307,6 +497,56 @@ process_callback() {
             else
                 tg_answer_callback "$cb_id" "$MSG_REFRESH_ERROR" "false"
             fi
+            ;;
+        btn_traffic_hour)
+            local res=$(get_traffic_stats_vnstat "-h")
+            local kb="[[{\"text\":\"${BTN_BACK}\",\"callback_data\":\"btn_stats\"}]]"
+            if [ "$res" = "ERR_VNSTAT" ]; then
+                local cmd=$(get_pkg_install_cmd "vnstatd vnstat")
+                local msg=$(printf "$MSG_TRAFFIC_ERR_VNSTAT" "$cmd")
+                tg_edit_message_text "$chat_id" "$msg_id" "$msg" "$kb"
+            else
+                tg_edit_message_text "$chat_id" "$msg_id" "${MSG_TRAFFIC_HOUR_TITLE}${res}" "$kb"
+            fi
+            tg_answer_callback "$cb_id" "" "false"
+            ;;
+        btn_traffic_day)
+            local res=$(get_traffic_stats_vnstat "-d")
+            local kb="[[{\"text\":\"${BTN_BACK}\",\"callback_data\":\"btn_stats\"}]]"
+            if [ "$res" = "ERR_VNSTAT" ]; then
+                local cmd=$(get_pkg_install_cmd "vnstatd vnstat")
+                local msg=$(printf "$MSG_TRAFFIC_ERR_VNSTAT" "$cmd")
+                tg_edit_message_text "$chat_id" "$msg_id" "$msg" "$kb"
+            else
+                tg_edit_message_text "$chat_id" "$msg_id" "${MSG_TRAFFIC_DAY_TITLE}${res}" "$kb"
+            fi
+            tg_answer_callback "$cb_id" "" "false"
+            ;;
+        btn_traffic_month)
+            local res=$(get_traffic_stats_vnstat "-m")
+            local kb="[[{\"text\":\"${BTN_BACK}\",\"callback_data\":\"btn_stats\"}]]"
+            if [ "$res" = "ERR_VNSTAT" ]; then
+                local cmd=$(get_pkg_install_cmd "vnstatd vnstat")
+                local msg=$(printf "$MSG_TRAFFIC_ERR_VNSTAT" "$cmd")
+                tg_edit_message_text "$chat_id" "$msg_id" "$msg" "$kb"
+            else
+                tg_edit_message_text "$chat_id" "$msg_id" "${MSG_TRAFFIC_MONTH_TITLE}${res}" "$kb"
+            fi
+            tg_answer_callback "$cb_id" "" "false"
+            ;;
+        btn_traffic_device)
+            local res=$(get_traffic_stats_nlbwmon)
+            local kb="[[{\"text\":\"${BTN_BACK}\",\"callback_data\":\"btn_stats\"}]]"
+            if [ "$res" = "ERR_NLBWMON" ]; then
+                local cmd=$(get_pkg_install_cmd "nlbwmon")
+                local msg=$(printf "$MSG_TRAFFIC_ERR_NLBWMON" "$cmd")
+                tg_edit_message_text "$chat_id" "$msg_id" "$msg" "$kb"
+            elif [ -z "$res" ]; then
+                tg_edit_message_text "$chat_id" "$msg_id" "${MSG_TRAFFIC_DEVICE_TITLE}Пока нет данных о трафике по устройствам." "$kb"
+            else
+                tg_edit_message_text "$chat_id" "$msg_id" "${MSG_TRAFFIC_DEVICE_TITLE}${res}" "$kb"
+            fi
+            tg_answer_callback "$cb_id" "" "false"
             ;;
         btn_devices)
             local kb=$(get_devices_keyboard)
@@ -403,6 +643,36 @@ process_callback() {
             local kb="[[{\"text\":\"${BTN_YES}\",\"callback_data\":\"dev_do_unblock_${mac}\"},{\"text\":\"${BTN_NO}\",\"callback_data\":\"dev_blocked_view_${mac}\"}]]"
             tg_edit_message_text "$chat_id" "$msg_id" "$msg" "$kb"
             tg_answer_callback "$cb_id" "" "false"
+            ;;
+        dev_wol_*)
+            local mac="${data#dev_wol_}"
+            if ! validate_mac "$mac"; then
+                tg_answer_callback "$cb_id" "Invalid MAC" "true"
+                return
+            fi
+            local name=$(get_device_name_by_mac "$mac")
+            local msg=$(printf "$MSG_WOL_CONFIRM" "$name")
+            local kb="[[{\"text\":\"${BTN_YES}\",\"callback_data\":\"dev_do_wol_${mac}\"},{\"text\":\"${BTN_NO}\",\"callback_data\":\"dev_view_${mac}\"}]]"
+            tg_edit_message_text "$chat_id" "$msg_id" "$msg" "$kb"
+            tg_answer_callback "$cb_id" "" "false"
+            ;;
+        dev_do_wol_*)
+            local mac="${data#dev_do_wol_}"
+            if ! validate_mac "$mac"; then
+                tg_answer_callback "$cb_id" "Invalid MAC" "true"
+                return
+            fi
+            local name=$(get_device_name_by_mac "$mac")
+            if send_wol_packet "$mac"; then
+                local msg=$(printf "$MSG_WOL_SENT" "$name")
+                tg_answer_callback "$cb_id" "$msg" "true"
+            else
+                tg_answer_callback "$cb_id" "$MSG_WOL_ERROR" "true"
+            fi
+            # Return to device view
+            local msg_text=$(get_device_details_text "$mac")
+            local kb=$(get_device_details_keyboard "$mac")
+            tg_edit_message_text "$chat_id" "$msg_id" "$msg_text" "$kb"
             ;;
         dev_do_kick_*)
             local mac="${data#dev_do_kick_}"
@@ -540,6 +810,146 @@ process_callback() {
             local msg=$(get_iface_details "$iface")
             local kb=$(get_iface_details_keyboard "$iface")
             tg_edit_message_text "$chat_id" "$msg_id" "$msg" "$kb"
+            ;;
+        btn_diag)
+            tg_edit_message_text "$chat_id" "$msg_id" "$MSG_DIAG_HEADER" "$(get_diag_keyboard)"
+            tg_answer_callback "$cb_id" "" "false"
+            clear_user_state "$user_id"
+            ;;
+        diag_ping)
+            set_user_state "$user_id" "diag_ping"
+            tg_edit_message_text "$chat_id" "$msg_id" "$MSG_DIAG_PING_REQ" "[[{\"text\":\"${BTN_BACK}\",\"callback_data\":\"btn_diag\"}]]"
+            tg_answer_callback "$cb_id" "" "false"
+            ;;
+        diag_traceroute)
+            set_user_state "$user_id" "diag_traceroute"
+            tg_edit_message_text "$chat_id" "$msg_id" "$MSG_DIAG_TRACE_REQ" "[[{\"text\":\"${BTN_BACK}\",\"callback_data\":\"btn_diag\"}]]"
+            tg_answer_callback "$cb_id" "" "false"
+            ;;
+        diag_dns)
+            set_user_state "$user_id" "diag_dns"
+            tg_edit_message_text "$chat_id" "$msg_id" "$MSG_DIAG_DNS_REQ" "[[{\"text\":\"${BTN_BACK}\",\"callback_data\":\"btn_diag\"}]]"
+            tg_answer_callback "$cb_id" "" "false"
+            ;;
+        diag_port)
+            set_user_state "$user_id" "diag_port"
+            tg_edit_message_text "$chat_id" "$msg_id" "$MSG_DIAG_PORT_REQ" "[[{\"text\":\"${BTN_BACK}\",\"callback_data\":\"btn_diag\"}]]"
+            tg_answer_callback "$cb_id" "" "false"
+            ;;
+        btn_ports)
+            local kb=$(get_ports_keyboard)
+            tg_edit_message_text "$chat_id" "$msg_id" "$MSG_PORTS_HEADER" "$kb"
+            tg_answer_callback "$cb_id" "" "false"
+            clear_user_state "$user_id"
+            ;;
+        port_view_*)
+            local name="${data#port_view_}"
+            # Validate name (letters, numbers, dash, underscore, space allowed)
+            if ! echo "$name" | grep -qE '^[a-zA-Z0-9_ -]+$'; then
+                tg_answer_callback "$cb_id" "Invalid rule name" "true"
+                return
+            fi
+            # Find rule details
+            local rule=$(get_port_rules | grep "^${name}|")
+            if [ -n "$rule" ]; then
+                local old_ifs="$IFS"
+                IFS="|"
+                read -r rname renable rproto rsrc_dport rdest_ip rdest_port <<EOF
+$rule
+EOF
+                IFS="$old_ifs"
+                local status_str="Выключено"
+                [ "$renable" = "1" ] && status_str="Включено"
+                
+                local details=$(printf "$MSG_PORT_DETAILS" "$rname" "$rproto" "$rsrc_dport" "$rdest_ip" "$rdest_port" "$status_str")
+                tg_edit_message_text "$chat_id" "$msg_id" "$details" "$(get_port_details_keyboard "$rname" "$renable")"
+            fi
+            tg_answer_callback "$cb_id" "" "false"
+            ;;
+        port_toggle_*)
+            # Format: port_toggle_<name>_<action>
+            local temp="${data#port_toggle_}"
+            local action="${temp##*_}"
+            local name="${temp%_*}"
+            if ! echo "$name" | grep -qE '^[a-zA-Z0-9_ -]+$' || ! echo "$action" | grep -qE '^[01]$'; then
+                tg_answer_callback "$cb_id" "Invalid action" "true"
+                return
+            fi
+            toggle_port_rule "$name" "$action"
+            # Refresh details
+            local rule=$(get_port_rules | grep "^${name}|")
+            if [ -n "$rule" ]; then
+                local old_ifs="$IFS"
+                IFS="|"
+                read -r rname renable rproto rsrc_dport rdest_ip rdest_port <<EOF
+$rule
+EOF
+                IFS="$old_ifs"
+                local status_str="Выключено"
+                [ "$renable" = "1" ] && status_str="Включено"
+                
+                local details=$(printf "$MSG_PORT_DETAILS" "$rname" "$rproto" "$rsrc_dport" "$rdest_ip" "$rdest_port" "$status_str")
+                tg_edit_message_text "$chat_id" "$msg_id" "$details" "$(get_port_details_keyboard "$rname" "$renable")"
+                tg_answer_callback "$cb_id" "$MSG_REFRESH_SUCCESS" "false"
+            else
+                tg_answer_callback "$cb_id" "$MSG_REFRESH_ERROR" "true"
+            fi
+            ;;
+        port_delete_*)
+            local name="${data#port_delete_}"
+            if ! echo "$name" | grep -qE '^[a-zA-Z0-9_ -]+$'; then
+                tg_answer_callback "$cb_id" "Invalid rule name" "true"
+                return
+            fi
+            local msg=$(printf "$MSG_PORT_CONFIRM_DELETE" "$name")
+            local kb="[[{\"text\":\"${BTN_YES}\",\"callback_data\":\"port_do_delete_${name}\"},{\"text\":\"${BTN_NO}\",\"callback_data\":\"port_view_${name}\"}]]"
+            tg_edit_message_text "$chat_id" "$msg_id" "$msg" "$kb"
+            tg_answer_callback "$cb_id" "" "false"
+            ;;
+        port_do_delete_*)
+            local name="${data#port_do_delete_}"
+            if ! echo "$name" | grep -qE '^[a-zA-Z0-9_ -]+$'; then
+                tg_answer_callback "$cb_id" "Invalid rule name" "true"
+                return
+            fi
+            delete_port_rule "$name"
+            tg_answer_callback "$cb_id" "$(printf "$MSG_PORT_DELETED" "$name")" "true"
+            # Return to ports list
+            tg_edit_message_text "$chat_id" "$msg_id" "$MSG_PORTS_HEADER" "$(get_ports_keyboard)"
+            ;;
+        port_add)
+            set_user_state "$user_id" "port_add_name"
+            tg_edit_message_text "$chat_id" "$msg_id" "$MSG_PORT_ADD_NAME" "[[{\"text\":\"${BTN_BACK}\",\"callback_data\":\"btn_ports\"}]]"
+            tg_answer_callback "$cb_id" "" "false"
+            ;;
+        port_add_proto_*)
+            local proto="${data#port_add_proto_}"
+            local old_ifs="$IFS"
+            local state=$(get_user_state "$user_id")
+            clear_user_state "$user_id"
+            
+            if [ -n "$state" ] && echo "$state" | grep -q "^port_add_proto|"; then
+                local name="${state#*name=}"
+                name="${name%%|*}"
+                local ext="${state#*ext=}"
+                ext="${ext%%|*}"
+                local ip="${state#*ip=}"
+                ip="${ip%%|*}"
+                local int="${state#*int=}"
+                int="${int%%|*}"
+                
+                # Proto mapping
+                local uci_proto="tcp"
+                [ "$proto" = "udp" ] && uci_proto="udp"
+                [ "$proto" = "all" ] && uci_proto="tcp udp"
+                
+                add_port_rule "$name" "$uci_proto" "$ext" "$ip" "$int"
+                tg_answer_callback "$cb_id" "$(printf "$MSG_PORT_ADD_SUCCESS" "$name")" "true"
+            else
+                tg_answer_callback "$cb_id" "$MSG_REFRESH_ERROR" "true"
+            fi
+            # Return to list
+            tg_edit_message_text "$chat_id" "$msg_id" "$MSG_PORTS_HEADER" "$(get_ports_keyboard)"
             ;;
         btn_about)
             local msg=$(printf "$MSG_ABOUT_TEXT" "$BOT_VERSION")

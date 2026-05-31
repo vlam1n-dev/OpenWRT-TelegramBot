@@ -217,7 +217,7 @@ check_updates() {
     
     [ -z "$latest" ] && return
     
-    local current="1.0.32"
+    local current="1.0.67"
     [ -f "${BOT_BASE_DIR}/VERSION" ] && current=$(cat "${BOT_BASE_DIR}/VERSION")
     
     # Use semantic version comparison (0 = current < latest, 1 = equal, 2 = current > latest)

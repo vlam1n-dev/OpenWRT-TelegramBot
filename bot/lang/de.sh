@@ -147,3 +147,57 @@ MSG_UPD_LATEST="✅ Sie verwenden die neueste Version (v%s)."
 MSG_UPD_AVAILABLE="📥 <b>Neues Update verfügbar!</b>\n\nVersion: <b>v%s</b>\nHerunterladen: <a href=\"https://github.com/vlam1n-dev/OpenWRT-TelegramBot\">vlam1n-dev/OpenWRT-TelegramBot</a>"
 MSG_UPD_ERROR="❌ Fehler beim Prüfen auf Updates. Bitte versuchen Sie es später noch einmal."
 MSG_UPD_COOLDOWN="⏳ Bitte warten Sie %s Sekunden vor dem nächsten Versuch."
+
+# ── Neue Funktionen (Diagnose, WoL, Datenverkehr, Portweiterleitung) ──
+# Tasten
+BTN_DIAG="🔍 Diagnose"
+BTN_WOL="🔔 Wake on Lan"
+BTN_PORTS="🔀 Ports"
+BTN_PORT_ADD="➕ Port hinzufügen"
+BTN_PORT_PROTO_TCP="TCP"
+BTN_PORT_PROTO_UDP="UDP"
+BTN_PORT_PROTO_ALL="TCP+UDP"
+BTN_TRAFFIC_HOUR="🕒 Stündlich"
+BTN_TRAFFIC_DAY="📅 Täglich"
+BTN_TRAFFIC_MONTH="📆 Monatlich"
+BTN_TRAFFIC_DEVICE="📱 Nach Gerät"
+
+# Diagnose
+MSG_DIAG_HEADER="🔍 <b>Netzwerkdiagnose</b>"
+MSG_DIAG_PING_REQ="Geben Sie eine IP-Adresse oder einen Host für <b>Ping</b> ein (z.B. <code>8.8.8.8</code> oder <code>google.com</code>):"
+MSG_DIAG_TRACE_REQ="Geben Sie eine IP-Adresse oder einen Host für <b>Traceroute</b> ein (z.B. <code>1.1.1.1</code>):"
+MSG_DIAG_DNS_REQ="Geben Sie eine Domain für <b>DNS-Abfrage</b> ein (z.B. <code>github.com</code>):"
+MSG_DIAG_PORT_REQ="Geben Sie Host und Port im Format <code>Host:Port</code> für <b>Port-Prüfung</b> ein (z.B. <code>192.168.1.1:80</code>):"
+MSG_DIAG_INVALID_INPUT="⚠️ Ungültiges Eingabeformat oder unzulässige Zeichen erkannt."
+MSG_DIAG_RUNNING="⏳ Befehl wird ausgeführt..."
+MSG_DIAG_RESULT="📝 <b>Ergebnis:</b>\n<pre>%s</pre>"
+
+# WoL
+MSG_WOL_CONFIRM="🔔 Sind Sie sicher, dass Sie ein WoL-Paket an <b>%s</b> senden möchten?"
+MSG_WOL_SENT="🔔 WoL-Paket erfolgreich an %s gesendet"
+MSG_WOL_ERROR="❌ Weder etherwake noch wol Dienstprogramme wurden im System gefunden."
+
+# Datenverkehr
+MSG_TRAFFIC_HEADER="📊 <b>Verkehrsstatistik</b>"
+MSG_TRAFFIC_ERR_VNSTAT="❌ Das Paket <b>vnStat</b> ist nicht auf dem System installiert.\n\nInstallieren Sie es mit:\n<code>%s</code>"
+MSG_TRAFFIC_ERR_NLBWMON="❌ Das Paket <b>nlbwmon</b> ist nicht auf dem System installiert.\n\nInstallieren Sie es mit:\n<code>%s</code>"
+MSG_TRAFFIC_HOUR_TITLE="🕒 <b>Datenverkehr der letzten 24 Stunden</b>\n\n"
+MSG_TRAFFIC_DAY_TITLE="📅 <b>Täglicher Datenverkehr</b>\n\n"
+MSG_TRAFFIC_MONTH_TITLE="📆 <b>Monatlicher Datenverkehr</b>\n\n"
+MSG_TRAFFIC_DEVICE_TITLE="📱 <b>Top 10 Geräte nach Datenverkehr</b>\n\n"
+
+# Ports
+MSG_PORTS_HEADER="🔀 <b>Portweiterleitung</b>"
+MSG_PORTS_NONE="Keine Portweiterleitungsregeln gefunden."
+MSG_PORT_DETAILS="🔀 <b>Regel: %s</b>\n\n<b>Protokoll:</b> %s\n<b>Externer Port:</b> %s\n<b>Interne IP:</b> %s\n<b>Interner Port:</b> %s\n<b>Status:</b> %s"
+MSG_PORT_CONFIRM_DELETE="⚠️ Sind Sie sicher, dass Sie die Regel <b>%s</b> löschen möchten?"
+MSG_PORT_DELETED="✅ Regel %s erfolgreich gelöscht."
+MSG_PORT_ADD_NAME="✍️ Geben Sie einen <b>Namen</b> für die neue Regel ein (z.B. <code>Web Server</code>):"
+MSG_PORT_ADD_EXT="✍️ Geben Sie den <b>externen Port</b> ein (z.B. <code>8080</code>):"
+MSG_PORT_ADD_IP="✍️ Geben Sie die <b>interne IP-Adresse</b> des Geräts ein (z.B. <code>192.168.1.10</code>):"
+MSG_PORT_ADD_INT="✍️ Geben Sie den <b>internen Port</b> ein (z.B. <code>80</code>):"
+MSG_PORT_ADD_PROTO="✍️ Wählen Sie das <b>Protokoll</b> für die Regel:"
+MSG_PORT_ADD_SUCCESS="✅ Regel %s erfolgreich hinzugefügt!"
+MSG_PORT_INVALID_PORT="⚠️ Ungültiger Port. Geben Sie eine Zahl zwischen 1 und 65535 ein."
+MSG_PORT_INVALID_IP="⚠️ Ungültige IP-Adresse. Geben Sie eine korrekte lokale IP ein."
+MSG_CANCEL_MSG="↩️ Aktion abgebrochen."

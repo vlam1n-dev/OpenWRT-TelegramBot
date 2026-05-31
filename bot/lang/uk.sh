@@ -147,3 +147,57 @@ MSG_UPD_LATEST="✅ У вас встановлена остання версія
 MSG_UPD_AVAILABLE="📥 <b>Доступне нове оновлення!</b>\n\nНова версія: <b>v%s</b>\nЗавантажити: <a href=\"https://github.com/vlam1n-dev/OpenWRT-TelegramBot\">vlam1n-dev/OpenWRT-TelegramBot</a>"
 MSG_UPD_ERROR="❌ Не вдалося перевірити оновлення. Будь ласка, спробуйте пізніше."
 MSG_UPD_COOLDOWN="⏳ Будь ласка, зачекайте %s сек. перед повторною перевіркою."
+
+# ── Нові функції (Діагностика, WoL, Трафик, Порти) ──
+# Кнопки
+BTN_DIAG="🔍 Діагностика"
+BTN_WOL="🔔 Wake on Lan"
+BTN_PORTS="🔀 Порти"
+BTN_PORT_ADD="➕ Додати порт"
+BTN_PORT_PROTO_TCP="TCP"
+BTN_PORT_PROTO_UDP="UDP"
+BTN_PORT_PROTO_ALL="TCP+UDP"
+BTN_TRAFFIC_HOUR="🕒 За годину"
+BTN_TRAFFIC_DAY="📅 За день"
+BTN_TRAFFIC_MONTH="📆 За місяць"
+BTN_TRAFFIC_DEVICE="📱 За пристроями"
+
+# Діагностика
+MSG_DIAG_HEADER="🔍 <b>Діагностика мережі</b>"
+MSG_DIAG_PING_REQ="Введіть IP або хост для <b>Ping</b> (наприклад, <code>8.8.8.8</code> або <code>google.com</code>):"
+MSG_DIAG_TRACE_REQ="Введіть IP або хост для <b>Traceroute</b> (наприклад, <code>1.1.1.1</code>):"
+MSG_DIAG_DNS_REQ="Введіть домен для <b>DNS Lookup</b> (наприклад, <code>github.com</code>):"
+MSG_DIAG_PORT_REQ="Введіть хост та порт у форматі <code>хост:порт</code> для <b>Port Check</b> (наприклад, <code>192.168.1.1:80</code>):"
+MSG_DIAG_INVALID_INPUT="⚠️ Невірний формат введення або присутні недопустимі символи."
+MSG_DIAG_RUNNING="⏳ Виконую команду..."
+MSG_DIAG_RESULT="📝 <b>Результат:</b>\n<pre>%s</pre>"
+
+# WoL
+MSG_WOL_CONFIRM="🔔 Ви дійсно хочете відправити WoL-пакет на пристрій <b>%s</b>?"
+MSG_WOL_SENT="🔔 WoL-пакет успішно відправлено на %s"
+MSG_WOL_ERROR="❌ Утиліти etherwake або wol не знайдені в системі."
+
+# Трафік
+MSG_TRAFFIC_HEADER="📊 <b>Статистика трафіку</b>"
+MSG_TRAFFIC_ERR_VNSTAT="❌ Пакет <b>vnStat</b> не встановлено в системі.\n\nВстановіть його за допомогою:\n<code>%s</code>"
+MSG_TRAFFIC_ERR_NLBWMON="❌ Пакет <b>nlbwmon</b> не встановлено в системі.\n\nВстановіть його за допомогою:\n<code>%s</code>"
+MSG_TRAFFIC_HOUR_TITLE="🕒 <b>Трафік за останні 24 години</b>\n\n"
+MSG_TRAFFIC_DAY_TITLE="📅 <b>Трафік по днях</b>\n\n"
+MSG_TRAFFIC_MONTH_TITLE="📆 <b>Трафік по місяцях</b>\n\n"
+MSG_TRAFFIC_DEVICE_TITLE="📱 <b>Топ-10 пристроїв за трафіком</b>\n\n"
+
+# Порти
+MSG_PORTS_HEADER="🔀 <b>Перенаправлення портів (Port Forwarding)</b>"
+MSG_PORTS_NONE="Правила перенаправлення портів не знайдені."
+MSG_PORT_DETAILS="🔀 <b>Правило: %s</b>\n\n<b>Протокол:</b> %s\n<b>Зовнішній порт:</b> %s\n<b>Внутрішній IP:</b> %s\n<b>Внутрішній порт:</b> %s\n<b>Статус:</b> %s"
+MSG_PORT_CONFIRM_DELETE="⚠️ Ви впевнені, що хочете <b>видалити</b> правило <b>%s</b>?"
+MSG_PORT_DELETED="✅ Правило %s успішно видалено."
+MSG_PORT_ADD_NAME="✍️ Введіть <b>назву</b> нового правила (наприклад, <code>Web Server</code>):"
+MSG_PORT_ADD_EXT="✍️ Введіть <b>зовнішній порт</b> (наприклад, <code>8080</code>):"
+MSG_PORT_ADD_IP="✍️ Введіть <b>внутрішню IP-адресу</b> пристрою (наприклад, <code>192.168.1.10</code>):"
+MSG_PORT_ADD_INT="✍️ Введіть <b>внутрішній порт</b> (наприклад, <code>80</code>):"
+MSG_PORT_ADD_PROTO="✍️ Виберіть <b>протокол</b> для правила:"
+MSG_PORT_ADD_SUCCESS="✅ Правило %s успішно додано!"
+MSG_PORT_INVALID_PORT="⚠️ Невірний порт. Введіть число від 1 до 65535."
+MSG_PORT_INVALID_IP="⚠️ Невірна IP-адреса. Введіть коректний локальний IP."
+MSG_CANCEL_MSG="↩️ Дію скасовано."

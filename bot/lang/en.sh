@@ -148,3 +148,57 @@ MSG_UPD_AVAILABLE="📥 <b>New update available!</b>\n\nLatest: <b>v%s</b>\nDown
 MSG_UPD_ERROR="❌ Failed to check updates. Please try again later."
 MSG_UPD_COOLDOWN="⏳ Please wait %s seconds before checking again."
 
+# ── New features (Diagnostics, WoL, Traffic, Ports) ──
+# Buttons
+BTN_DIAG="🔍 Diagnostics"
+BTN_WOL="🔔 Wake on Lan"
+BTN_PORTS="🔀 Ports"
+BTN_PORT_ADD="➕ Add Port"
+BTN_PORT_PROTO_TCP="TCP"
+BTN_PORT_PROTO_UDP="UDP"
+BTN_PORT_PROTO_ALL="TCP+UDP"
+BTN_TRAFFIC_HOUR="🕒 Hourly"
+BTN_TRAFFIC_DAY="📅 Daily"
+BTN_TRAFFIC_MONTH="📆 Monthly"
+BTN_TRAFFIC_DEVICE="📱 By Device"
+
+# Diagnostics
+MSG_DIAG_HEADER="🔍 <b>Network Diagnostics</b>"
+MSG_DIAG_PING_REQ="Enter IP or host for <b>Ping</b> (e.g., <code>8.8.8.8</code> or <code>google.com</code>):"
+MSG_DIAG_TRACE_REQ="Enter IP or host for <b>Traceroute</b> (e.g., <code>1.1.1.1</code>):"
+MSG_DIAG_DNS_REQ="Enter domain for <b>DNS Lookup</b> (e.g., <code>github.com</code>):"
+MSG_DIAG_PORT_REQ="Enter host and port as <code>host:port</code> for <b>Port Check</b> (e.g., <code>192.168.1.1:80</code>):"
+MSG_DIAG_INVALID_INPUT="⚠️ Invalid input format or illegal characters detected."
+MSG_DIAG_RUNNING="⏳ Executing command..."
+MSG_DIAG_RESULT="📝 <b>Result:</b>\n<pre>%s</pre>"
+
+# WoL
+MSG_WOL_CONFIRM="🔔 Are you sure you want to send WoL packet to <b>%s</b>?"
+MSG_WOL_SENT="🔔 WoL packet successfully sent to %s"
+MSG_WOL_ERROR="❌ Neither etherwake nor wol utility was found in the system."
+
+# Traffic
+MSG_TRAFFIC_HEADER="📊 <b>Traffic Statistics</b>"
+MSG_TRAFFIC_ERR_VNSTAT="❌ The <b>vnStat</b> package is not installed on the system.\n\nInstall it using:\n<code>%s</code>"
+MSG_TRAFFIC_ERR_NLBWMON="❌ The <b>nlbwmon</b> package is not installed on the system.\n\nInstall it using:\n<code>%s</code>"
+MSG_TRAFFIC_HOUR_TITLE="🕒 <b>Traffic for the last 24 hours</b>\n\n"
+MSG_TRAFFIC_DAY_TITLE="📅 <b>Daily Traffic</b>\n\n"
+MSG_TRAFFIC_MONTH_TITLE="📆 <b>Monthly Traffic</b>\n\n"
+MSG_TRAFFIC_DEVICE_TITLE="📱 <b>Top 10 Devices by Traffic</b>\n\n"
+
+# Ports
+MSG_PORTS_HEADER="🔀 <b>Port Forwarding</b>"
+MSG_PORTS_NONE="No port forwarding rules found."
+MSG_PORT_DETAILS="🔀 <b>Rule: %s</b>\n\n<b>Protocol:</b> %s\n<b>External Port:</b> %s\n<b>Internal IP:</b> %s\n<b>Internal Port:</b> %s\n<b>Status:</b> %s"
+MSG_PORT_CONFIRM_DELETE="⚠️ Are you sure you want to <b>delete</b> rule <b>%s</b>?"
+MSG_PORT_DELETED="✅ Rule %s successfully deleted."
+MSG_PORT_ADD_NAME="✍️ Enter a <b>name</b> for the new rule (e.g., <code>Web Server</code>):"
+MSG_PORT_ADD_EXT="✍️ Enter the <b>external port</b> (e.g., <code>8080</code>):"
+MSG_PORT_ADD_IP="✍️ Enter the <b>internal IP address</b> of the device (e.g., <code>192.168.1.10</code>):"
+MSG_PORT_ADD_INT="✍️ Enter the <b>internal port</b> (e.g., <code>80</code>):"
+MSG_PORT_ADD_PROTO="✍️ Choose the <b>protocol</b> for the rule:"
+MSG_PORT_ADD_SUCCESS="✅ Rule %s successfully added!"
+MSG_PORT_INVALID_PORT="⚠️ Invalid port. Enter a number between 1 and 65535."
+MSG_PORT_INVALID_IP="⚠️ Invalid IP address. Enter a correct local IP."
+MSG_CANCEL_MSG="↩️ Action cancelled."
+

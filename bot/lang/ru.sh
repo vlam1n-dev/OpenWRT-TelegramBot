@@ -148,3 +148,57 @@ MSG_UPD_AVAILABLE="📥 <b>Доступно новое обновление!</b>
 MSG_UPD_ERROR="❌ Не удалось проверить обновления. Пожалуйста, попробуйте позже."
 MSG_UPD_COOLDOWN="⏳ Пожалуйста, подождите %s сек. перед повторной проверкой."
 
+# ── Новые функции (Диагностика, WoL, Трафик, Порты) ──
+# Кнопки
+BTN_DIAG="🔍 Диагностика"
+BTN_WOL="🔔 Wake on Lan"
+BTN_PORTS="🔀 Порты"
+BTN_PORT_ADD="➕ Добавить порт"
+BTN_PORT_PROTO_TCP="TCP"
+BTN_PORT_PROTO_UDP="UDP"
+BTN_PORT_PROTO_ALL="TCP+UDP"
+BTN_TRAFFIC_HOUR="🕒 За час"
+BTN_TRAFFIC_DAY="📅 За день"
+BTN_TRAFFIC_MONTH="📆 За месяц"
+BTN_TRAFFIC_DEVICE="📱 По устройствам"
+
+# Диагностика
+MSG_DIAG_HEADER="🔍 <b>Диагностика сети</b>"
+MSG_DIAG_PING_REQ="Введите IP или хост для <b>Ping</b> (например, <code>8.8.8.8</code> или <code>google.com</code>):"
+MSG_DIAG_TRACE_REQ="Введите IP или хост для <b>Traceroute</b> (например, <code>1.1.1.1</code>):"
+MSG_DIAG_DNS_REQ="Введите домен для <b>DNS Lookup</b> (например, <code>github.com</code>):"
+MSG_DIAG_PORT_REQ="Введите хост и порт в формате <code>хост:порт</code> для <b>Port Check</b> (например, <code>192.168.1.1:80</code>):"
+MSG_DIAG_INVALID_INPUT="⚠️ Неверный формат ввода или присутствуют недопустимые символы."
+MSG_DIAG_RUNNING="⏳ Выполняю команду..."
+MSG_DIAG_RESULT="📝 <b>Результат:</b>\n<pre>%s</pre>"
+
+# WoL
+MSG_WOL_CONFIRM="🔔 Вы действительно хотите отправить WoL-пакет на устройство <b>%s</b>?"
+MSG_WOL_SENT="🔔 WoL-пакет успешно отправлен на %s"
+MSG_WOL_ERROR="❌ Утилиты etherwake или wol не найдены в системе."
+
+# Трафик
+MSG_TRAFFIC_HEADER="📊 <b>Статистика трафика</b>"
+MSG_TRAFFIC_ERR_VNSTAT="❌ Пакет <b>vnStat</b> не установлен в системе.\n\nУстановите его с помощью:\n<code>%s</code>"
+MSG_TRAFFIC_ERR_NLBWMON="❌ Пакет <b>nlbwmon</b> не установлен в системе.\n\nУстановите его с помощью:\n<code>%s</code>"
+MSG_TRAFFIC_HOUR_TITLE="🕒 <b>Трафик за последние 24 часа</b>\n\n"
+MSG_TRAFFIC_DAY_TITLE="📅 <b>Трафик по дням</b>\n\n"
+MSG_TRAFFIC_MONTH_TITLE="📆 <b>Трафик по месяцам</b>\n\n"
+MSG_TRAFFIC_DEVICE_TITLE="📱 <b>Топ-10 устройств по трафику</b>\n\n"
+
+# Порты
+MSG_PORTS_HEADER="🔀 <b>Проброс портов (Port Forwarding)</b>"
+MSG_PORTS_NONE="Правила проброса портов не найдены."
+MSG_PORT_DETAILS="🔀 <b>Правило: %s</b>\n\n<b>Протокол:</b> %s\n<b>Внешний порт:</b> %s\n<b>Внутренний IP:</b> %s\n<b>Внутренний порт:</b> %s\n<b>Статус:</b> %s"
+MSG_PORT_CONFIRM_DELETE="⚠️ Вы уверены, что хотите <b>удалить</b> правило <b>%s</b>?"
+MSG_PORT_DELETED="✅ Правило %s успешно удалено."
+MSG_PORT_ADD_NAME="✍️ Введите <b>название</b> нового правила (например, <code>Web Server</code>):"
+MSG_PORT_ADD_EXT="✍️ Введите <b>внешний порт</b> (например, <code>8080</code>):"
+MSG_PORT_ADD_IP="✍️ Введите <b>внутренний IP-адрес</b> устройства (например, <code>192.168.1.10</code>):"
+MSG_PORT_ADD_INT="✍️ Введите <b>внутренний порт</b> (например, <code>80</code>):"
+MSG_PORT_ADD_PROTO="✍️ Выберите <b>протокол</b> для правила:"
+MSG_PORT_ADD_SUCCESS="✅ Правило %s успешно добавлено!"
+MSG_PORT_INVALID_PORT="⚠️ Неверный порт. Введите число от 1 до 65535."
+MSG_PORT_INVALID_IP="⚠️ Неверный IP-адрес. Введите корректный локальный IP."
+MSG_CANCEL_MSG="↩️ Действие отменено."
+
