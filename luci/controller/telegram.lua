@@ -7,10 +7,10 @@ function index()
 
     entry({"admin", "services", "telegram"}, cbi("telegram"), _("Telegram Bot"), 60).dependent = true
     entry({"admin", "services", "telegram", "status"}, call("action_status"))
-    entry({"admin", "services", "telegram", "test_api"}, call("action_test_api"))
+    entry({"admin", "services", "telegram", "test_api"}, post("action_test_api"))
     entry({"admin", "services", "telegram", "check_update"}, call("action_check_update"))
     entry({"admin", "services", "telegram", "read_log", "*"}, call("action_read_log"))
-    entry({"admin", "services", "telegram", "clear_log", "*"}, call("action_clear_log"))
+    entry({"admin", "services", "telegram", "clear_log", "*"}, post("action_clear_log"))
 end
 
 function action_status()
@@ -42,7 +42,14 @@ function action_test_api()
         return
     end
     
-    local cmd = string.format("curl -s --connect-timeout 10 https://api.telegram.org/bot%s/getMe", token)
+    -- Validate token: only allow alphanumeric and colon characters (bot tokens are digits:alphanumeric)
+    if not token:match("^[%w:_-]+$") then
+        luci.http.prepare_content("application/json")
+        luci.http.write_json({ ok = false, error = "Invalid token format" })
+        return
+    end
+    
+    local cmd = string.format("curl -s --connect-timeout 10 'https://api.telegram.org/bot%s/getMe'", token)
     local resp = sys.exec(cmd)
     
     luci.http.prepare_content("application/json")
@@ -56,7 +63,7 @@ function action_check_update()
         local_ver = sys.exec("cat ./VERSION 2>/dev/null")
     end
     if not local_ver or local_ver == "" then
-        local_ver = "1.0.24"
+        local_ver = "1.0.32"
     end
     local_ver = string.gsub(local_ver, "%s+", "")
 

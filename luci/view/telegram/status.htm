@@ -20,7 +20,7 @@
         btn.disabled = true;
         res.innerHTML = '<em><%:Testing...%></em>';
         
-        XHR.get('<%=luci.dispatcher.build_url("admin", "services", "telegram", "test_api")%>', null,
+        XHR.post('<%=luci.dispatcher.build_url("admin", "services", "telegram", "test_api")%>', { token: '<%=token%>' },
             function(x, data) {
                 btn.disabled = false;
                 if (data && data.ok) {
@@ -102,7 +102,7 @@
         if (current_log_type && confirm('<%:Are you sure you want to clear this log?%>')) {
             var content = document.getElementById('log_modal_content');
             content.innerHTML = '<em><%:Clearing...%></em>';
-            XHR.get('<%=luci.dispatcher.build_url("admin", "services", "telegram", "clear_log")%>/' + current_log_type, null,
+            XHR.post('<%=luci.dispatcher.build_url("admin", "services", "telegram", "clear_log")%>/' + current_log_type, { token: '<%=token%>' },
                 function(x, data) {
                     if (data && data.success) {
                         fetch_log_content(current_log_type);

@@ -65,6 +65,7 @@ MSG_DEV_STATUS_NEW="Нове"
 MSG_DEV_STATUS_KNOWN="Пристрій"
 MSG_REFRESH_SUCCESS="Оновлено"
 MSG_REFRESH_ERROR="Помилка"
+MSG_BLOCKED_STATUS="Заблоковано"
 MSG_BLOCKED_DEVICES_HEADER="🚫 <b>Заблоковані пристрої</b>"
 
 

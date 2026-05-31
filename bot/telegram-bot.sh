@@ -216,9 +216,9 @@ process_message() {
     local username="$3"
     local text="$4"
     
-    if ! check_admin "$chat_id"; then
+    if ! check_admin "$user_id"; then
         log_unauthorized "$user_id" "$username" "$chat_id" "$text"
-        local denied_msg=$(printf "$MSG_ACCESS_DENIED" "$chat_id")
+        local denied_msg=$(printf "$MSG_ACCESS_DENIED" "$user_id")
         tg_send_message "$chat_id" "$denied_msg" ""
         return
     fi
@@ -248,7 +248,7 @@ process_callback() {
     local user_id="$5"
     local username="$6"
     
-    if ! check_admin "$chat_id"; then
+    if ! check_admin "$user_id"; then
         log_unauthorized "$user_id" "$username" "$chat_id" "$data"
         tg_answer_callback "$cb_id" "Access Denied" "true"
         return
@@ -331,6 +331,10 @@ process_callback() {
             ;;
         dev_view_*)
             local mac="${data#dev_view_}"
+            if ! validate_mac "$mac"; then
+                tg_answer_callback "$cb_id" "Invalid MAC" "true"
+                return
+            fi
             local msg=$(get_device_details_text "$mac")
             local kb=$(get_device_details_keyboard "$mac")
             tg_edit_message_text "$chat_id" "$msg_id" "$msg" "$kb"
@@ -338,6 +342,10 @@ process_callback() {
             ;;
         dev_refresh_*)
             local mac="${data#dev_refresh_}"
+            if ! validate_mac "$mac"; then
+                tg_answer_callback "$cb_id" "Invalid MAC" "true"
+                return
+            fi
             local msg=$(get_device_details_text "$mac")
             local kb=$(get_device_details_keyboard "$mac")
             local resp=$(tg_edit_message_text "$chat_id" "$msg_id" "$msg" "$kb")
@@ -351,6 +359,10 @@ process_callback() {
             ;;
         dev_blocked_view_*)
             local mac="${data#dev_blocked_view_}"
+            if ! validate_mac "$mac"; then
+                tg_answer_callback "$cb_id" "Invalid MAC" "true"
+                return
+            fi
             local msg=$(get_blocked_device_details_text "$mac")
             local kb=$(get_blocked_device_details_keyboard "$mac")
             tg_edit_message_text "$chat_id" "$msg_id" "$msg" "$kb"
@@ -358,6 +370,10 @@ process_callback() {
             ;;
         dev_action_kick_*)
             local mac="${data#dev_action_kick_}"
+            if ! validate_mac "$mac"; then
+                tg_answer_callback "$cb_id" "Invalid MAC" "true"
+                return
+            fi
             local name=$(get_device_name_by_mac "$mac")
             local msg=$(printf "$MSG_DEV_CONFIRM_KICK" "$name")
             local kb="[[{\"text\":\"${BTN_YES}\",\"callback_data\":\"dev_do_kick_${mac}\"},{\"text\":\"${BTN_NO}\",\"callback_data\":\"dev_view_${mac}\"}]]"
@@ -366,6 +382,10 @@ process_callback() {
             ;;
         dev_action_block_*)
             local mac="${data#dev_action_block_}"
+            if ! validate_mac "$mac"; then
+                tg_answer_callback "$cb_id" "Invalid MAC" "true"
+                return
+            fi
             local name=$(get_device_name_by_mac "$mac")
             local msg=$(printf "$MSG_DEV_CONFIRM_BLOCK" "$name")
             local kb="[[{\"text\":\"${BTN_YES}\",\"callback_data\":\"dev_do_block_${mac}\"},{\"text\":\"${BTN_NO}\",\"callback_data\":\"dev_view_${mac}\"}]]"
@@ -374,6 +394,10 @@ process_callback() {
             ;;
         dev_action_unblock_*)
             local mac="${data#dev_action_unblock_}"
+            if ! validate_mac "$mac"; then
+                tg_answer_callback "$cb_id" "Invalid MAC" "true"
+                return
+            fi
             local name=$(get_device_name_by_mac "$mac")
             local msg=$(printf "$MSG_DEV_CONFIRM_UNBLOCK" "$name")
             local kb="[[{\"text\":\"${BTN_YES}\",\"callback_data\":\"dev_do_unblock_${mac}\"},{\"text\":\"${BTN_NO}\",\"callback_data\":\"dev_blocked_view_${mac}\"}]]"
@@ -382,6 +406,10 @@ process_callback() {
             ;;
         dev_do_kick_*)
             local mac="${data#dev_do_kick_}"
+            if ! validate_mac "$mac"; then
+                tg_answer_callback "$cb_id" "Invalid MAC" "true"
+                return
+            fi
             local name=$(get_device_name_by_mac "$mac")
             local mac_lower=$(echo "$mac" | tr 'A-Z' 'a-z')
             for wlan in $(ubus list hostapd.* 2>/dev/null); do
@@ -399,6 +427,10 @@ process_callback() {
             ;;
         dev_do_block_*)
             local mac="${data#dev_do_block_}"
+            if ! validate_mac "$mac"; then
+                tg_answer_callback "$cb_id" "Invalid MAC" "true"
+                return
+            fi
             local name=$(get_device_name_by_mac "$mac")
             block_device_mac "$mac" "$name"
             local msg=$(printf "$MSG_DEV_BLOCKED" "$name")
@@ -408,6 +440,10 @@ process_callback() {
             ;;
         dev_do_unblock_*)
             local mac="${data#dev_do_unblock_}"
+            if ! validate_mac "$mac"; then
+                tg_answer_callback "$cb_id" "Invalid MAC" "true"
+                return
+            fi
             local name=$(get_device_name_by_mac "$mac")
             unblock_device_mac "$mac"
             local msg=$(printf "$MSG_DEV_UNBLOCKED" "$name")
@@ -422,6 +458,10 @@ process_callback() {
             ;;
         if_view_*)
             local iface="${data#if_view_}"
+            if ! validate_iface_name "$iface"; then
+                tg_answer_callback "$cb_id" "Invalid interface" "true"
+                return
+            fi
             local msg=$(get_iface_details "$iface")
             local kb=$(get_iface_details_keyboard "$iface")
             tg_edit_message_text "$chat_id" "$msg_id" "$msg" "$kb"
@@ -429,6 +469,10 @@ process_callback() {
             ;;
         if_action_up_*)
             local iface="${data#if_action_up_}"
+            if ! validate_iface_name "$iface"; then
+                tg_answer_callback "$cb_id" "Invalid interface" "true"
+                return
+            fi
             local msg=$(printf "$MSG_IFACE_CONFIRM_UP" "$iface")
             local kb="[[{\"text\":\"${BTN_YES}\",\"callback_data\":\"if_do_up_${iface}\"},{\"text\":\"${BTN_NO}\",\"callback_data\":\"if_view_${iface}\"}]]"
             tg_edit_message_text "$chat_id" "$msg_id" "$msg" "$kb"
@@ -436,6 +480,10 @@ process_callback() {
             ;;
         if_action_down_*)
             local iface="${data#if_action_down_}"
+            if ! validate_iface_name "$iface"; then
+                tg_answer_callback "$cb_id" "Invalid interface" "true"
+                return
+            fi
             local msg=$(printf "$MSG_IFACE_CONFIRM_DOWN" "$iface")
             local kb="[[{\"text\":\"${BTN_YES}\",\"callback_data\":\"if_do_down_${iface}\"},{\"text\":\"${BTN_NO}\",\"callback_data\":\"if_view_${iface}\"}]]"
             tg_edit_message_text "$chat_id" "$msg_id" "$msg" "$kb"
@@ -443,6 +491,10 @@ process_callback() {
             ;;
         if_action_restart_*)
             local iface="${data#if_action_restart_}"
+            if ! validate_iface_name "$iface"; then
+                tg_answer_callback "$cb_id" "Invalid interface" "true"
+                return
+            fi
             local msg=$(printf "$MSG_IFACE_CONFIRM_REBOOT" "$iface")
             local kb="[[{\"text\":\"${BTN_YES}\",\"callback_data\":\"if_do_restart_${iface}\"},{\"text\":\"${BTN_NO}\",\"callback_data\":\"if_view_${iface}\"}]]"
             tg_edit_message_text "$chat_id" "$msg_id" "$msg" "$kb"
@@ -450,6 +502,10 @@ process_callback() {
             ;;
         if_do_up_*)
             local iface="${data#if_do_up_}"
+            if ! validate_iface_name "$iface"; then
+                tg_answer_callback "$cb_id" "Invalid interface" "true"
+                return
+            fi
             ubus call network.interface."$iface" up 2>/dev/null
             tg_answer_callback "$cb_id" "Interface $iface enabling..." "false"
             sleep 1
@@ -459,6 +515,10 @@ process_callback() {
             ;;
         if_do_down_*)
             local iface="${data#if_do_down_}"
+            if ! validate_iface_name "$iface"; then
+                tg_answer_callback "$cb_id" "Invalid interface" "true"
+                return
+            fi
             ubus call network.interface."$iface" down 2>/dev/null
             tg_answer_callback "$cb_id" "Interface $iface disabling..." "false"
             sleep 1
@@ -468,6 +528,10 @@ process_callback() {
             ;;
         if_do_restart_*)
             local iface="${data#if_do_restart_}"
+            if ! validate_iface_name "$iface"; then
+                tg_answer_callback "$cb_id" "Invalid interface" "true"
+                return
+            fi
             ubus call network.interface."$iface" down 2>/dev/null
             sleep 1
             ubus call network.interface."$iface" up 2>/dev/null
@@ -509,13 +573,20 @@ process_callback() {
             
             if [ -z "$latest" ]; then
                 tg_answer_callback "$cb_id" "$MSG_UPD_ERROR" "true"
-            elif [ "$latest" = "$BOT_VERSION" ]; then
-                local msg=$(printf "$MSG_UPD_LATEST" "$BOT_VERSION")
-                tg_answer_callback "$cb_id" "$msg" "true"
             else
-                local msg=$(printf "$MSG_UPD_AVAILABLE" "$latest")
-                local kb="[[{\"text\":\"${BTN_BACK}\",\"callback_data\":\"btn_about\"}]]"
-                tg_edit_message_text "$chat_id" "$msg_id" "$msg" "$kb"
+                # Semantic version comparison (0 = latest is newer, 1 = equal, 2 = current is newer)
+                version_compare "$BOT_VERSION" "$latest"
+                local cmp_result=$?
+                if [ $cmp_result -eq 0 ]; then
+                    # Current < latest — update available
+                    local msg=$(printf "$MSG_UPD_AVAILABLE" "$latest")
+                    local kb="[[{\"text\":\"${BTN_BACK}\",\"callback_data\":\"btn_about\"}]]"
+                    tg_edit_message_text "$chat_id" "$msg_id" "$msg" "$kb"
+                else
+                    # Current >= latest — no update
+                    local msg=$(printf "$MSG_UPD_LATEST" "$BOT_VERSION")
+                    tg_answer_callback "$cb_id" "$msg" "true"
+                fi
             fi
             ;;
         btn_settings)
@@ -605,6 +676,12 @@ process_callback() {
 # ─── Main polling loop ───
 # Read saved offset (no subshell — direct file read)
 offset=$(cat "$OFFSET_FILE" 2>/dev/null || echo 0)
+
+# Clean up stale rate limit files on startup
+cleanup_rate_limits
+
+# Periodic rate limit cleanup counter
+rate_cleanup_counter=0
 
 while true; do
     # Save response directly to a file (for jsonfilter -i)

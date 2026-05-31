@@ -31,11 +31,12 @@ echo $$ > "${BOT_DIR}/monitor.pid"
 
 # Initialize active MACs on startup to prevent spamming notifications on reboot/restart
 mkdir -p "${BOT_DIR}"
-[ ! -f "/etc/telegram-known-macs" ] && touch "/etc/telegram-known-macs"
+local_known_macs="${BOT_DIR}/known_macs"
+[ ! -f "$local_known_macs" ] && touch "$local_known_macs"
 get_active_macs > "${BOT_DIR}/active_macs"
 while read -r mac; do
-    if [ -n "$mac" ] && ! grep -qi "^${mac}$" "/etc/telegram-known-macs"; then
-        echo "$mac" >> "/etc/telegram-known-macs"
+    if [ -n "$mac" ] && ! grep -qi "^${mac}$" "$local_known_macs"; then
+        echo "$mac" >> "$local_known_macs"
     fi
 done < "${BOT_DIR}/active_macs"
 
@@ -51,10 +52,23 @@ check_cpu() {
     [ "$enabled" != "1" ] && return
     
     local threshold=$(uci -q get telegram.notifications.high_cpu_threshold || echo 90)
-    local cpu_idle=$(top -n 1 | grep '^CPU:' | awk '{print $8}' | sed 's/%//')
-    [ -z "$cpu_idle" ] && return
     
-    local cpu_load=$((100 - cpu_idle))
+    # Reliable CPU measurement via /proc/stat (two samples)
+    local cpu_load=""
+    if [ -f /proc/stat ]; then
+        local cpu1=$(head -1 /proc/stat | awk '{print $2+$3+$4+$5+$6+$7+$8}')
+        local idle1=$(head -1 /proc/stat | awk '{print $5}')
+        sleep 1
+        local cpu2=$(head -1 /proc/stat | awk '{print $2+$3+$4+$5+$6+$7+$8}')
+        local idle2=$(head -1 /proc/stat | awk '{print $5}')
+        local total_diff=$((cpu2 - cpu1))
+        local idle_diff=$((idle2 - idle1))
+        if [ "$total_diff" -gt 0 ] 2>/dev/null; then
+            cpu_load=$(( (total_diff - idle_diff) * 100 / total_diff ))
+        fi
+    fi
+    
+    [ -z "$cpu_load" ] && return
     
     if [ "$cpu_load" -ge "$threshold" ]; then
         local msg=$(printf "$NOTIFY_HIGH_CPU" "$cpu_load" "$threshold")
@@ -68,19 +82,12 @@ check_ram() {
     
     local threshold=$(uci -q get telegram.notifications.high_ram_threshold || echo 90)
     
-    local mem=$(free -m 2>/dev/null)
-    local mem_total mem_free
-    if [ -z "$mem" ]; then
-        mem_total=$(awk '/MemTotal/ {print $2}' /proc/meminfo)
-        mem_free=$(awk '/MemAvailable/ {print $2}' /proc/meminfo)
-        [ -z "$mem_free" ] && mem_free=$(awk '/MemFree/ {print $2}' /proc/meminfo)
-    else
-        mem_total=$(echo "$mem" | awk '/Mem:/ {print $2}')
-        mem_free=$(echo "$mem" | awk '/Mem:/ {print $4}')
-        # Convert to KB for consistent math
-        mem_total=$((mem_total * 1024))
-        mem_free=$((mem_free * 1024))
-    fi
+    # Always use /proc/meminfo for reliable results across all BusyBox versions
+    local mem_total=$(awk '/MemTotal/ {print $2}' /proc/meminfo)
+    local mem_free=$(awk '/MemAvailable/ {print $2}' /proc/meminfo)
+    [ -z "$mem_free" ] && mem_free=$(awk '/MemFree/ {print $2}' /proc/meminfo)
+    
+    [ -z "$mem_total" ] || [ "$mem_total" -eq 0 ] 2>/dev/null && return
     
     local mem_used=$((mem_total - mem_free))
     local mem_pct=$(( mem_used * 100 / mem_total ))
@@ -95,7 +102,18 @@ check_wan_ip() {
     local enabled=$(uci -q get telegram.notifications.wan_ip_change || echo 0)
     [ "$enabled" != "1" ] && return
     
+    # Try default WAN interface first, then scan all interfaces for a public IP
     local wan_ip=$(ubus call network.interface.wan status 2>/dev/null | jsonfilter -e '@["ipv4-address"][0].address' 2>/dev/null)
+    if [ -z "$wan_ip" ]; then
+        for iface in $(ubus call network.interface dump 2>/dev/null | jsonfilter -e '@.interface[*].interface' 2>/dev/null); do
+            local ip=$(ubus call network.interface."$iface" status 2>/dev/null | jsonfilter -e '@["ipv4-address"][0].address' 2>/dev/null)
+            case "$ip" in
+                10.*|172.1[6-9].*|172.2[0-9].*|172.3[0-1].*|192.168.*|127.*|"" ) continue ;;
+            esac
+            wan_ip="$ip"
+            break
+        done
+    fi
     [ -z "$wan_ip" ] && wan_ip=$(wget -qO- http://checkip.amazonaws.com 2>/dev/null)
     [ -z "$wan_ip" ] && return
     
@@ -116,7 +134,7 @@ check_new_devices() {
     [ "$enabled" != "1" ] && return
     
     local leases="/tmp/dhcp.leases"
-    local known_macs_file="/etc/telegram-known-macs"
+    local known_macs_file="${BOT_DIR}/known_macs"
     local active_macs_file="${BOT_DIR}/active_macs"
     
     [ ! -f "$known_macs_file" ] && touch "$known_macs_file"
@@ -199,11 +217,14 @@ check_updates() {
     
     [ -z "$latest" ] && return
     
-    local current="1.0.24"
+    local current="1.0.32"
     [ -f "${BOT_BASE_DIR}/VERSION" ] && current=$(cat "${BOT_BASE_DIR}/VERSION")
     
-    if [ "$latest" != "$current" ]; then
-        # Use simple string compare or assume latest is newer if not equal
+    # Use semantic version comparison (0 = current < latest, 1 = equal, 2 = current > latest)
+    version_compare "$current" "$latest"
+    local cmp_result=$?
+    if [ $cmp_result -eq 0 ]; then
+        # Current is older than latest — notify about update
         local msg=$(printf "$NOTIFY_UPDATE" "$current" "$latest" "$repo")
         send_notification "$msg"
     fi

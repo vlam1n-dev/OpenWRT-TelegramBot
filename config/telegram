@@ -1,7 +1,6 @@
 config telegram 'bot'
 	option enabled '0'
 	option api_token ''
-	option poll_interval '2'
 	option poll_timeout '30'
 	option curl_connect_timeout '10'
 	option curl_max_time '30'

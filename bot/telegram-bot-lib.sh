@@ -16,7 +16,7 @@ CURL_CONNECT_TIMEOUT=10
 CURL_MAX_TIME=30
 LANG_CODE="en"
 GITHUB_REPO="vlam1n-dev/OpenWRT-TelegramBot"
-BOT_VERSION="1.0.24"
+BOT_VERSION="1.0.32"
 [ -f "/usr/lib/telegram-bot/VERSION" ] && BOT_VERSION=$(cat /usr/lib/telegram-bot/VERSION)
 [ -f "./VERSION" ] && BOT_VERSION=$(cat ./VERSION)
 
@@ -138,7 +138,8 @@ tg_answer_callback() {
     local payload="{\"callback_query_id\": \"${callback_id}\""
     
     if [ -n "$text" ]; then
-        payload="${payload}, \"text\": \"${text}\"" 
+        local escaped_text=$(json_escape "$text")
+        payload="${payload}, \"text\": \"${escaped_text}\"" 
     fi
     if [ "$show_alert" = "true" ]; then
         payload="${payload}, \"show_alert\": true"
@@ -149,12 +150,58 @@ tg_answer_callback() {
 }
 
 check_admin() {
-    local chat_id="$1"
+    local user_id="$1"
+    # Validate user_id is numeric
+    case "$user_id" in
+        ''|*[!0-9-]*) return 1 ;;
+    esac
     for admin in $ADMIN_IDS; do
-        if [ "$admin" = "$chat_id" ]; then
+        # Validate admin_id is numeric
+        case "$admin" in
+            ''|*[!0-9-]*) continue ;;
+        esac
+        if [ "$admin" = "$user_id" ]; then
             return 0
         fi
     done
+    return 1
+}
+
+# Validate MAC address format (XX:XX:XX:XX:XX:XX)
+validate_mac() {
+    local mac="$1"
+    echo "$mac" | grep -qiE '^[0-9a-f]{2}(:[0-9a-f]{2}){5}$'
+}
+
+# Validate interface name (alphanumeric, dots, dashes, underscores only)
+validate_iface_name() {
+    local name="$1"
+    echo "$name" | grep -qE '^[a-zA-Z0-9._-]+$'
+}
+
+# Semantic version comparison: returns 0 if ver1 < ver2, 1 if equal, 2 if ver1 > ver2
+version_compare() {
+    local ver1="$1"
+    local ver2="$2"
+    
+    # Strip leading 'v' if present
+    ver1=$(echo "$ver1" | sed 's/^v//')
+    ver2=$(echo "$ver2" | sed 's/^v//')
+    
+    [ "$ver1" = "$ver2" ] && return 1
+    
+    local IFS='.'
+    set -- $ver1
+    local v1_major="${1:-0}" v1_minor="${2:-0}" v1_patch="${3:-0}"
+    set -- $ver2
+    local v2_major="${1:-0}" v2_minor="${2:-0}" v2_patch="${3:-0}"
+    
+    if [ "$v1_major" -lt "$v2_major" ] 2>/dev/null; then return 0; fi
+    if [ "$v1_major" -gt "$v2_major" ] 2>/dev/null; then return 2; fi
+    if [ "$v1_minor" -lt "$v2_minor" ] 2>/dev/null; then return 0; fi
+    if [ "$v1_minor" -gt "$v2_minor" ] 2>/dev/null; then return 2; fi
+    if [ "$v1_patch" -lt "$v2_patch" ] 2>/dev/null; then return 0; fi
+    if [ "$v1_patch" -gt "$v2_patch" ] 2>/dev/null; then return 2; fi
     return 1
 }
 
@@ -253,6 +300,11 @@ check_rate_limit() {
     return 0
 }
 
+# Clean up stale rate limit files (older than 1 hour)
+cleanup_rate_limits() {
+    find "$BOT_DIR" -name 'rate_limits_*' -mmin +60 -delete 2>/dev/null
+}
+
 # --- System Functions ---
 get_system_info() {
     local hostname=$(uci -q get system.@system[0].hostname || cat /proc/sys/kernel/hostname)
@@ -279,7 +331,25 @@ get_system_info() {
     flash_used=$((flash_used / 1024))
     local flash_pct=$(( flash_used * 100 / flash_total ))
     
-    local wan_ip=$(ubus call network.interface.wan status 2>/dev/null | jsonfilter -e '@["ipv4-address"][0].address' 2>/dev/null)
+    # Determine WAN interface name from UCI (default: wan)
+    local wan_iface=$(uci -q get network.wan.ifname 2>/dev/null)
+    [ -z "$wan_iface" ] && wan_iface="wan"
+    local wan_proto_iface="wan"
+    # Try to get the logical interface name for WAN
+    local wan_ip=$(ubus call network.interface.${wan_proto_iface} status 2>/dev/null | jsonfilter -e '@["ipv4-address"][0].address' 2>/dev/null)
+    # Fallback: try all interfaces to find one with a public IP
+    if [ -z "$wan_ip" ]; then
+        for iface in $(ubus call network.interface dump 2>/dev/null | jsonfilter -e '@.interface[*].interface' 2>/dev/null); do
+            local ip=$(ubus call network.interface."$iface" status 2>/dev/null | jsonfilter -e '@["ipv4-address"][0].address' 2>/dev/null)
+            case "$ip" in
+                10.*|172.1[6-9].*|172.2[0-9].*|172.3[0-1].*|192.168.*|127.*) continue ;;
+            esac
+            if [ -n "$ip" ]; then
+                wan_ip="$ip"
+                break
+            fi
+        done
+    fi
     [ -z "$wan_ip" ] && wan_ip=$(wget -qO- http://checkip.amazonaws.com 2>/dev/null)
     [ -z "$wan_ip" ] && wan_ip="Unknown"
     if [ "$wan_ip" != "Unknown" ]; then
@@ -313,14 +383,24 @@ get_system_info() {
 }
 
 get_system_stats() {
-    local cpu_idle=$(top -n 1 | grep '^CPU:' | awk '{print $8}' | sed 's/%//')
     local cpu_load="Unknown"
-    if [ -n "$cpu_idle" ]; then
-        cpu_load=$((100 - cpu_idle))
-    else
-        # fallback for different top format
-        local load_avg=$(cat /proc/loadavg | awk '{print $1}')
-        cpu_load="$load_avg"
+    # Reliable CPU measurement via /proc/stat (two samples, 1s apart)
+    if [ -f /proc/stat ]; then
+        local cpu1=$(head -1 /proc/stat | awk '{print $2+$3+$4+$5+$6+$7+$8}')
+        local idle1=$(head -1 /proc/stat | awk '{print $5}')
+        sleep 1
+        local cpu2=$(head -1 /proc/stat | awk '{print $2+$3+$4+$5+$6+$7+$8}')
+        local idle2=$(head -1 /proc/stat | awk '{print $5}')
+        local total_diff=$((cpu2 - cpu1))
+        local idle_diff=$((idle2 - idle1))
+        if [ "$total_diff" -gt 0 ] 2>/dev/null; then
+            cpu_load=$(( (total_diff - idle_diff) * 100 / total_diff ))
+        fi
+    fi
+    # Fallback to load average if /proc/stat failed
+    if [ "$cpu_load" = "Unknown" ]; then
+        cpu_load=$(awk '{print $1}' /proc/loadavg 2>/dev/null)
+        [ -z "$cpu_load" ] && cpu_load="0"
     fi
     
     local mem_total=$(awk '/MemTotal/ {print $2}' /proc/meminfo)
@@ -386,11 +466,7 @@ get_interfaces() {
     ubus call network.interface dump 2>/dev/null | jsonfilter -e '@.interface[*].interface' -e '@.interface[*].up' 2>/dev/null | awk 'ORS=NR%2?" ":"\n"'
 }
 
-toggle_interface() {
-    local iface="$1"
-    local action="$2" # up or down
-    ubus call network.interface "$action" "{\"interface\":\"$iface\"}"
-}
+# toggle_interface() removed — dead code, interfaces are managed directly via ubus
 
 get_iface_details() {
     local iface="$1"
@@ -686,16 +762,19 @@ get_device_details_text() {
     local mac_upper=$(echo "$target_mac" | tr 'a-z' 'A-Z')
 
     for wlan in $(ubus list hostapd.* 2>/dev/null); do
-        local is_auth=$(ubus call "$wlan" get_clients 2>/dev/null | jsonfilter -e "@.clients['$mac_lower'].authorized" -e "@.clients['$mac_upper'].authorized" 2>/dev/null | head -n 1)
+        # Cache the ubus call result to avoid redundant calls
+        local clients_json=$(ubus call "$wlan" get_clients 2>/dev/null)
+        local is_auth=$(echo "$clients_json" | jsonfilter -e "@.clients['$mac_lower'].authorized" -e "@.clients['$mac_upper'].authorized" 2>/dev/null | head -n 1)
         if [ "$is_auth" = "true" ]; then
             local dev_name="${wlan#hostapd.}"
             wlan_iface=$(ubus call iwinfo info "{\"device\":\"$dev_name\"}" 2>/dev/null | jsonfilter -e '@.ssid' 2>/dev/null)
             [ -z "$wlan_iface" ] && wlan_iface=$(iwinfo "$dev_name" info 2>/dev/null | grep "ESSID:" | sed -n 's/.*ESSID: "\([^"]*\)".*/\1/p')
-            [ -z "$wlan_iface" ] && wlan_iface=$(ubus call "$wlan" get_config 2>/dev/null | jsonfilter -e '@.ssid' 2>/dev/null)
+            [ -z "$wlan_iface" ] && wlan_iface=$(echo "$clients_json" | jsonfilter -e '@.config.ssid' 2>/dev/null)
             [ -z "$wlan_iface" ] && wlan_iface="$dev_name"
             
-            local rx_val=$(ubus call "$wlan" get_clients 2>/dev/null | jsonfilter -e "@.clients['$mac_lower'].rate.rx" -e "@.clients['$mac_upper'].rate.rx" 2>/dev/null | head -n 1)
-            local tx_val=$(ubus call "$wlan" get_clients 2>/dev/null | jsonfilter -e "@.clients['$mac_lower'].rate.tx" -e "@.clients['$mac_upper'].rate.tx" 2>/dev/null | head -n 1)
+            # Reuse cached clients_json for rate extraction
+            local rx_val=$(echo "$clients_json" | jsonfilter -e "@.clients['$mac_lower'].rate.rx" -e "@.clients['$mac_upper'].rate.rx" 2>/dev/null | head -n 1)
+            local tx_val=$(echo "$clients_json" | jsonfilter -e "@.clients['$mac_lower'].rate.tx" -e "@.clients['$mac_upper'].rate.tx" 2>/dev/null | head -n 1)
             
             if [ -n "$rx_val" ]; then
                 if [ "$rx_val" -ge 1000000 ]; then
@@ -751,8 +830,8 @@ get_blocked_device_details_text() {
     
     local mac_str="<tg-spoiler>${target_mac}</tg-spoiler>"
     
-    printf "🚫 <b>%s (Заблокирован)</b>\n\n<b>%s</b> %s\n" \
-        "$name" \
+    printf "🚫 <b>%s (%s)</b>\n\n<b>%s</b> %s\n" \
+        "$name" "$MSG_BLOCKED_STATUS" \
         "$MSG_DEVICE_MAC" "$mac_str"
 }
 

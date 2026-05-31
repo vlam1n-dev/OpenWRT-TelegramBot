@@ -65,6 +65,7 @@ MSG_DEV_STATUS_NEW="Neues Gerät"
 MSG_DEV_STATUS_KNOWN="Gerät"
 MSG_REFRESH_SUCCESS="Aktualisiert"
 MSG_REFRESH_ERROR="Fehler"
+MSG_BLOCKED_STATUS="Gesperrt"
 MSG_BLOCKED_DEVICES_HEADER="🚫 <b>Blockierte Geräte</b>"
 
 
