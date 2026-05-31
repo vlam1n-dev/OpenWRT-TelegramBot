@@ -328,6 +328,21 @@ echo "-----------------------------------------------------"
 info "Запуск и включение службы telegram..."
 /etc/init.d/telegram enable >/dev/null 2>&1
 
+token=$(uci -q get telegram.bot.api_token)
+enabled=$(uci -q get telegram.bot.enabled || echo 0)
+
+if [ -n "$token" ]; then
+    if [ "$enabled" != "1" ]; then
+        uci set telegram.bot.enabled='1'
+        uci commit telegram
+    fi
+    info "API токен найден. Запуск службы telegram..."
+    /etc/init.d/telegram restart >/dev/null 2>&1
+else
+    /etc/init.d/telegram restart >/dev/null 2>&1
+    warn "API токен не настроен. Бот не запустится до тех пор, пока вы не вставите токен в LuCI (Службы -> Telegram Bot) или вручную в /etc/config/telegram."
+fi
+
 # Очистка
 rm -f /tmp/bot.tar.gz
 rm -rf /tmp/OpenWRT-TelegramBot-*
